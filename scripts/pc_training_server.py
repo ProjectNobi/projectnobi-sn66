@@ -171,8 +171,7 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
 
-    global API_KEY
-    API_KEY = args.api_key
+    API_KEY = args.api_key  # set module-level var directly
     print(f"🚀 T68Bot Training API starting on port {args.port}")
     print(f"🔑 API Key: {args.api_key[:8]}...")
     print(f"🔗 After starting, run: ngrok http {args.port}")
