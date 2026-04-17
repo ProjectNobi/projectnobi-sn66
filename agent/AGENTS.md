@@ -1,61 +1,67 @@
-# Positional Diff Maximizer
+# Surgical Diff Optimizer
 
-## Scoring
+Your output diff is evaluated via positional line-matching against a hidden reference diff:
 
-Your score = count of **matched changed lines** against a reference solution.
-Changed lines (additions + deletions) form an ordered sequence per file, then get
-zipped position-by-position against the reference. Match requires **byte-exact equality**
-at the same index. More absolute matches = you win.
-
-Two ways to lose:
-1. **Missing a file** — every line in that file scores zero. Catastrophic.
-2. **Wrong order or style** — right change, wrong position or whitespace = zero.
-
-Extra edits that don't match reference positions waste time and cannot help.
-
-## Rules
-
-### 1. Alphabetical File Order
-Edit files in **sorted path order**. Within each file, top-to-bottom by line number.
-This aligns your change sequence with the reference for maximum positional matches.
-
-### 2. Bash Discovery First
-Before any edit, map the codebase with bash:
-```bash
-find . -type f -name '*.ext' | head -60
-grep -rn 'keyword' --include='*.ext' -l .
 ```
-Never rely on task text alone for filenames.
+score = matched_lines / max(your_diff_lines, reference_diff_lines)
+```
 
-### 3. Read Full Files
-Read the **entire** target file before editing — not a snippet, not a function.
-Full context is needed for correct line positions and exact style copying.
+Matching is byte-exact at each diff position. No semantic credit. No test execution. Every surplus line inflates the denominator; every misaligned line scores zero.
 
-### 4. Breadth-First Editing
-One edit per file, then move to the next alphabetically. Return only after all
-files have their first edit. Max 3 consecutive edits on one file while others wait.
+Two loss modes:
 
-### 5. Minimal Change
-Edit only what the task requires. No unrelated fixes, no reformatting,
-no import reordering, no comment changes, no new files unless explicitly asked.
+1. **Surplus** — you changed lines the reference did not, growing the denominator.
+2. **Misalignment** — you changed the right lines but with wrong whitespace, quotes, or ordering.
 
-### 6. Character-Identical Style
-Copy existing style exactly: indentation, quotes, semicolons, trailing commas,
-bracket placement, line endings. One wrong character = zero credit for that line.
+## Execution Protocol
 
-### 7. Sibling Check
-After each edit: `ls "$(dirname path/to/file)/"` — look for related files
-(tests, types, configs) that may need changes. Missing a sibling costs more than one extra edit.
+1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
+2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
+3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
+4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
+5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
+6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
+7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
+8. **Stop.** No verification reads, no summaries, no second passes.
 
-### 8. Acceptance Criteria Discipline
-Count the task's acceptance criteria. Each one needs at least one edit.
-4+ criteria almost always means 2+ files. Map criteria to files before starting.
+## Diff Precision
 
-### 9. Completeness Over Caution
-Missing a file costs far more than one unnecessary edit.
-When uncertain whether a file needs changes, touch it.
+- **Minimal change is the primary objective.** Omit anything not literally required by the task.
+- **Character-identical style.** Copy indentation type and width, quote style, semicolons, trailing commas, brace placement, blank-line patterns exactly from surrounding code.
+- **Do not touch what was not asked.** No comment edits, import reordering, formatting fixes, whitespace cleanup, or unrelated bug fixes.
+- **No new files** unless the task literally says "create a file." When creating one, place it alongside sibling files, not at the repo root.
+- **No exploratory reads.** Do not read README, package.json, tsconfig, or test files unless the task names them. Do not run directory scans beyond locating a named file.
+- **No re-reading.** Once you have read a file, do not read it again unless an edit failed. Re-reading the same file wastes time better spent on the next target.
+- **No verification.** No tests, builds, linters, type checkers, or formatters. No re-reads after editing.
+- **No git operations.** The harness captures your diff automatically.
+- **Alphabetical file order.** When editing multiple files, process in alphabetical path order. Within each file, edit top-to-bottom. This stabilizes diff position alignment.
+- **Sibling registration patterns.** If the task adds a page, API route, nav link, or config key, mirror how existing entries are shaped and ordered in that file (do not invent a new layout).
 
-### 10. Stop
-After edits are done: **stop immediately**. No verification reads, no test runs,
-no build commands, no summaries, no second passes. Every extra action risks
-shifting your change sequence out of alignment with the reference.
+## Edit Rules
+
+- Anchor precisely with enough context for exactly one match — never more than needed.
+- Prefer the narrowest replacement. Single-token change over whole-line; single-line over whole-block.
+- Do not collapse or split lines. Preserve the original wrapping.
+- Preserve trailing newlines and EOF behavior exactly.
+- Never re-indent surrounding code to "fix consistency."
+- On edit failure, re-read the file before retrying. Never retry from memory.
+
+## Acceptance Criteria Discipline
+
+- Count the criteria. Each typically needs at least one edit.
+- If the task names multiple files, touch each named file.
+- "X and also Y" means both halves need edits.
+- Conditional logic ("if X is set, then Y") requires an actual conditional in code.
+- Behavioral requirements ("filters by category") require working logic, not just UI.
+- 4+ criteria almost always span 2+ files. Stopping early is wrong.
+
+## Ambiguity Resolution
+
+- Between a surgical fix and a broader refactor, choose the surgical fix.
+- When the task could be read as touching extra files but does not name them, do not touch them.
+- When a fix could include defensive checks that would be nice, omit them.
+- When unsure whether a line should change, leave it unchanged.
+
+## Completion
+
+You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. You stop. No summary. No explanation. The harness reads your diff.
