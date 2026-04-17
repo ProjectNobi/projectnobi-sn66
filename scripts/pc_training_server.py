@@ -1,32 +1,35 @@
 """
 T68Bot PC Training API Server
 Run on your RTX 5070 Ti PC — exposes a secure API for fine-tuning
-Security: API key auth + localhost only + ngrok tunnel (no port forwarding needed)
+Security: API key auth + localhost only + Tailscale tunnel
 
 Usage:
   python pc_training_server.py --api-key YOUR_SECRET_KEY
-
-Then run ngrok:
-  ngrok http 8765
 """
 
+import argparse, os, secrets, threading
+import uvicorn
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
-import uvicorn, json, os, threading, time, secrets
-from pathlib import Path
+
+# ── Parse args first, before anything else ──────────────────────────
+parser = argparse.ArgumentParser()
+parser.add_argument("--api-key", required=True, help="Secret API key")
+parser.add_argument("--port", type=int, default=8765)
+_args = parser.parse_args()
+
+CONFIGURED_API_KEY = _args.api_key
+CONFIGURED_PORT = _args.port
 
 app = FastAPI(title="T68Bot Training API")
+JOB_STATUS = {}
 
-# ── Config ──────────────────────────────────────────────────────────
-API_KEY = os.environ.get("T68_API_KEY", "change-me-before-running")
-JOB_STATUS = {}  # job_id -> {status, progress, model_url, error}
-
-# ── Models ──────────────────────────────────────────────────────────
+# ── Request models ───────────────────────────────────────────────────
 class TrainRequest(BaseModel):
-    hf_dataset: str          # e.g. "Kooltek68/sn66-ft-dataset-v11"
-    base_model: str          # e.g. "Qwen/Qwen2.5-Coder-14B-Instruct"
-    hf_output_repo: str      # e.g. "Kooltek68/sn66-ft-pc-v1"
-    hf_token: str            # HuggingFace write token
+    hf_dataset: str
+    base_model: str
+    hf_output_repo: str
+    hf_token: str
     epochs: int = 3
     lora_rank: int = 16
     batch_size: int = 4
@@ -41,13 +44,12 @@ class StatusResponse(BaseModel):
     model_url: str = ""
     error: str = ""
 
-# ── Auth ────────────────────────────────────────────────────────────
-def verify_key(x_api_key: str = Header(...)):
-    if x_api_key != API_KEY:
+# ── Auth ─────────────────────────────────────────────────────────────
+def check_key(x_api_key: str = Header(...)):
+    if x_api_key != CONFIGURED_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
-    return x_api_key
 
-# ── Training worker ─────────────────────────────────────────────────
+# ── Training worker ──────────────────────────────────────────────────
 def run_training(job_id: str, req: TrainRequest):
     try:
         JOB_STATUS[job_id] = {"status": "starting", "progress": "Loading model...", "model_url": "", "error": ""}
@@ -57,7 +59,6 @@ def run_training(job_id: str, req: TrainRequest):
         from trl import SFTTrainer
         from transformers import TrainingArguments
 
-        # Load model with 4-bit quantization
         JOB_STATUS[job_id]["progress"] = f"Loading {req.base_model}..."
         model, tokenizer = FastLanguageModel.from_pretrained(
             model_name=req.base_model,
@@ -65,7 +66,6 @@ def run_training(job_id: str, req: TrainRequest):
             load_in_4bit=True,
         )
 
-        # Apply LoRA
         model = FastLanguageModel.get_peft_model(
             model,
             r=req.lora_rank,
@@ -76,11 +76,9 @@ def run_training(job_id: str, req: TrainRequest):
             use_gradient_checkpointing="unsloth",
         )
 
-        # Load dataset
         JOB_STATUS[job_id]["progress"] = f"Loading dataset {req.hf_dataset}..."
         ds = load_dataset(req.hf_dataset, split="train", token=req.hf_token)
 
-        # Format as instruction→output
         def format_row(row):
             inst = row.get(req.field_instruction, "")
             out = row.get(req.field_output, "")
@@ -88,9 +86,8 @@ def run_training(job_id: str, req: TrainRequest):
 
         ds = ds.map(format_row)
 
-        # Train
-        JOB_STATUS[job_id]["progress"] = "Training..."
         JOB_STATUS[job_id]["status"] = "training"
+        JOB_STATUS[job_id]["progress"] = "Training..."
 
         trainer = SFTTrainer(
             model=model,
@@ -105,7 +102,7 @@ def run_training(job_id: str, req: TrainRequest):
                 learning_rate=2e-4,
                 fp16=True,
                 logging_steps=10,
-                output_dir=f"/tmp/sn66-train-{job_id}",
+                output_dir=f"C:\\t68bot\\train-{job_id}",
                 save_strategy="no",
                 warmup_ratio=0.05,
                 lr_scheduler_type="cosine",
@@ -113,38 +110,42 @@ def run_training(job_id: str, req: TrainRequest):
         )
         trainer.train()
 
-        # Push to HF
         JOB_STATUS[job_id]["progress"] = f"Pushing to {req.hf_output_repo}..."
         model.push_to_hub(req.hf_output_repo, token=req.hf_token)
         tokenizer.push_to_hub(req.hf_output_repo, token=req.hf_token)
 
-        model_url = f"https://huggingface.co/{req.hf_output_repo}"
         JOB_STATUS[job_id].update({
             "status": "success",
             "progress": "Done!",
-            "model_url": model_url
+            "model_url": f"https://huggingface.co/{req.hf_output_repo}"
         })
 
     except Exception as e:
         JOB_STATUS[job_id].update({"status": "error", "error": str(e)})
 
-# ── Endpoints ───────────────────────────────────────────────────────
+# ── Endpoints ────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {"status": "ok", "gpu": _gpu_info()}
+    try:
+        import subprocess
+        r = subprocess.run(["nvidia-smi","--query-gpu=name,memory.free","--format=csv,noheader"],
+                          capture_output=True, text=True)
+        gpu = r.stdout.strip()
+    except:
+        gpu = "unknown"
+    return {"status": "ok", "gpu": gpu}
 
 @app.post("/train")
 def start_training(req: TrainRequest, x_api_key: str = Header(...)):
-    verify_key(x_api_key)
+    check_key(x_api_key)
     job_id = secrets.token_hex(8)
     JOB_STATUS[job_id] = {"status": "queued", "progress": "", "model_url": "", "error": ""}
-    thread = threading.Thread(target=run_training, args=(job_id, req), daemon=True)
-    thread.start()
+    threading.Thread(target=run_training, args=(job_id, req), daemon=True).start()
     return {"job_id": job_id, "status": "queued"}
 
 @app.get("/status/{job_id}")
 def get_status(job_id: str, x_api_key: str = Header(...)):
-    verify_key(x_api_key)
+    check_key(x_api_key)
     if job_id not in JOB_STATUS:
         raise HTTPException(status_code=404, detail="Job not found")
     s = JOB_STATUS[job_id]
@@ -152,27 +153,18 @@ def get_status(job_id: str, x_api_key: str = Header(...)):
 
 @app.get("/jobs")
 def list_jobs(x_api_key: str = Header(...)):
-    verify_key(x_api_key)
+    check_key(x_api_key)
     return {jid: s["status"] for jid, s in JOB_STATUS.items()}
 
-def _gpu_info():
-    try:
-        import subprocess
-        r = subprocess.run(["nvidia-smi","--query-gpu=name,memory.total,memory.free",
-                           "--format=csv,noheader"], capture_output=True, text=True)
-        return r.stdout.strip()
-    except:
-        return "unknown"
+# ── Start ────────────────────────────────────────────────────────────
+print(f"T68Bot Training API starting on port {CONFIGURED_PORT}")
+print(f"API Key: {CONFIGURED_API_KEY[:8]}...")
+print(f"GPU: ", end="")
+try:
+    import subprocess
+    r = subprocess.run(["nvidia-smi","--query-gpu=name","--format=csv,noheader"], capture_output=True, text=True)
+    print(r.stdout.strip())
+except:
+    print("checking...")
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--api-key", required=True, help="Secret API key")
-    parser.add_argument("--port", type=int, default=8765)
-    args = parser.parse_args()
-
-    API_KEY = args.api_key  # set module-level var directly
-    print(f"🚀 T68Bot Training API starting on port {args.port}")
-    print(f"🔑 API Key: {args.api_key[:8]}...")
-    print(f"🔗 After starting, run: ngrok http {args.port}")
-    uvicorn.run(app, host="127.0.0.1", port=args.port)
+uvicorn.run(app, host="127.0.0.1", port=CONFIGURED_PORT)
