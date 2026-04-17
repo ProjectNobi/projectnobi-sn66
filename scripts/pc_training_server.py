@@ -1,10 +1,6 @@
 """
-T68Bot PC Training API Server
-Run on your RTX 5070 Ti PC — exposes a secure API for fine-tuning
-Security: API key auth + localhost only + Tailscale tunnel
-
-Usage:
-  python pc_training_server.py --api-key YOUR_SECRET_KEY
+T68Bot PC Training API Server - v2 (no Unsloth, standard transformers+PEFT)
+Works with any CUDA version including 13.x
 """
 
 import argparse, os, secrets, threading
@@ -12,69 +8,68 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 
-# ── Parse args first, before anything else ──────────────────────────
 parser = argparse.ArgumentParser()
-parser.add_argument("--api-key", required=True, help="Secret API key")
+parser.add_argument("--api-key", required=True)
 parser.add_argument("--port", type=int, default=8765)
 _args = parser.parse_args()
 
 CONFIGURED_API_KEY = _args.api_key
 CONFIGURED_PORT = _args.port
 
-app = FastAPI(title="T68Bot Training API")
+app = FastAPI(title="T68Bot Training API v2")
 JOB_STATUS = {}
 
-# ── Request models ───────────────────────────────────────────────────
 class TrainRequest(BaseModel):
     hf_dataset: str
     base_model: str
     hf_output_repo: str
     hf_token: str
     epochs: int = 3
-    lora_rank: int = 16
-    batch_size: int = 4
+    lora_rank: int = 32
+    batch_size: int = 2
     max_seq_length: int = 2048
     field_instruction: str = "instruction"
     field_output: str = "output"
 
-class StatusResponse(BaseModel):
-    job_id: str
-    status: str
-    progress: str = ""
-    model_url: str = ""
-    error: str = ""
-
-# ── Auth ─────────────────────────────────────────────────────────────
 def check_key(x_api_key: str = Header(...)):
     if x_api_key != CONFIGURED_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-# ── Training worker ──────────────────────────────────────────────────
 def run_training(job_id: str, req: TrainRequest):
     try:
-        JOB_STATUS[job_id] = {"status": "starting", "progress": "Loading model...", "model_url": "", "error": ""}
+        import torch
+        JOB_STATUS[job_id] = {"status": "starting", "progress": f"CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'}", "model_url": "", "error": ""}
 
-        from unsloth import FastLanguageModel
-        from datasets import load_dataset
+        if not torch.cuda.is_available():
+            raise RuntimeError(f"CUDA not available. torch version: {torch.__version__}, cuda compiled: {torch.version.cuda}")
+
+        from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+        from peft import LoraConfig, get_peft_model, TaskType
         from trl import SFTTrainer
-        from transformers import TrainingArguments
+        from datasets import load_dataset
 
         JOB_STATUS[job_id]["progress"] = f"Loading {req.base_model}..."
-        model, tokenizer = FastLanguageModel.from_pretrained(
-            model_name=req.base_model,
-            max_seq_length=req.max_seq_length,
-            load_in_4bit=True,
+        tokenizer = AutoTokenizer.from_pretrained(req.base_model, token=req.hf_token)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        model = AutoModelForCausalLM.from_pretrained(
+            req.base_model,
+            torch_dtype=torch.float16,
+            device_map="auto",
+            token=req.hf_token,
         )
 
-        model = FastLanguageModel.get_peft_model(
-            model,
+        lora_config = LoraConfig(
             r=req.lora_rank,
-            target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
             lora_alpha=req.lora_rank * 2,
+            target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
             lora_dropout=0.05,
             bias="none",
-            use_gradient_checkpointing="unsloth",
+            task_type=TaskType.CAUSAL_LM,
         )
+        model = get_peft_model(model, lora_config)
+        model.print_trainable_parameters()
 
         JOB_STATUS[job_id]["progress"] = f"Loading dataset {req.hf_dataset}..."
         ds = load_dataset(req.hf_dataset, split="train", token=req.hf_token)
@@ -84,7 +79,7 @@ def run_training(job_id: str, req: TrainRequest):
             out = row.get(req.field_output, "")
             return {"text": f"### Instruction:\n{inst}\n\n### Response:\n{out}"}
 
-        ds = ds.map(format_row)
+        ds = ds.map(format_row, remove_columns=ds.column_names)
 
         JOB_STATUS[job_id]["status"] = "training"
         JOB_STATUS[job_id]["progress"] = "Training..."
@@ -96,16 +91,17 @@ def run_training(job_id: str, req: TrainRequest):
             dataset_text_field="text",
             max_seq_length=req.max_seq_length,
             args=TrainingArguments(
+                output_dir=f"C:\\t68bot\\train-{job_id}",
                 per_device_train_batch_size=req.batch_size,
                 gradient_accumulation_steps=4,
                 num_train_epochs=req.epochs,
                 learning_rate=2e-4,
                 fp16=True,
                 logging_steps=10,
-                output_dir=f"C:\\t68bot\\train-{job_id}",
                 save_strategy="no",
                 warmup_ratio=0.05,
                 lr_scheduler_type="cosine",
+                report_to="none",
             ),
         )
         trainer.train()
@@ -121,18 +117,16 @@ def run_training(job_id: str, req: TrainRequest):
         })
 
     except Exception as e:
-        JOB_STATUS[job_id].update({"status": "error", "error": str(e)})
+        import traceback
+        JOB_STATUS[job_id].update({"status": "error", "error": f"{str(e)}\n{traceback.format_exc()[-500:]}"})
 
-# ── Endpoints ────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
     try:
-        import subprocess
-        r = subprocess.run(["nvidia-smi","--query-gpu=name,memory.free","--format=csv,noheader"],
-                          capture_output=True, text=True)
-        gpu = r.stdout.strip()
-    except:
-        gpu = "unknown"
+        import torch
+        gpu = f"{torch.cuda.get_device_name(0)}, CUDA={torch.cuda.is_available()}, torch={torch.__version__}"
+    except Exception as e:
+        gpu = str(e)
     return {"status": "ok", "gpu": gpu}
 
 @app.post("/train")
@@ -148,23 +142,21 @@ def get_status(job_id: str, x_api_key: str = Header(...)):
     check_key(x_api_key)
     if job_id not in JOB_STATUS:
         raise HTTPException(status_code=404, detail="Job not found")
-    s = JOB_STATUS[job_id]
-    return StatusResponse(job_id=job_id, **s)
+    return {"job_id": job_id, **JOB_STATUS[job_id]}
 
 @app.get("/jobs")
 def list_jobs(x_api_key: str = Header(...)):
     check_key(x_api_key)
     return {jid: s["status"] for jid, s in JOB_STATUS.items()}
 
-# ── Start ────────────────────────────────────────────────────────────
-print(f"T68Bot Training API starting on port {CONFIGURED_PORT}")
+print(f"T68Bot Training API v2 (transformers+PEFT) starting on port {CONFIGURED_PORT}")
 print(f"API Key: {CONFIGURED_API_KEY[:8]}...")
-print(f"GPU: ", end="")
 try:
-    import subprocess
-    r = subprocess.run(["nvidia-smi","--query-gpu=name","--format=csv,noheader"], capture_output=True, text=True)
-    print(r.stdout.strip())
-except:
-    print("checking...")
+    import torch
+    print(f"torch: {torch.__version__}, CUDA: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+except Exception as e:
+    print(f"torch check: {e}")
 
 uvicorn.run(app, host="127.0.0.1", port=CONFIGURED_PORT)
