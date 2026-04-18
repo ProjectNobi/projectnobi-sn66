@@ -79,7 +79,7 @@ def run_training(job_id: str, req: TrainRequest):
             out = row.get(req.field_output, "")
             return {"text": f"### Instruction:\n{inst}\n\n### Response:\n{out}"}
 
-        ds = ds.map(format_row, remove_columns=ds.column_names)
+        ds = ds.map(format_row, remove_columns=ds.column_names, num_proc=1)
 
         JOB_STATUS[job_id]["status"] = "training"
         JOB_STATUS[job_id]["progress"] = "Training..."
