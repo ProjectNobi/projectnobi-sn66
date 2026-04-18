@@ -149,15 +149,16 @@ def list_jobs(x_api_key: str = Header(...)):
     check_key(x_api_key)
     return {jid: s["status"] for jid, s in JOB_STATUS.items()}
 
-print(f"T68Bot Training API v2 (transformers+PEFT) starting on port {CONFIGURED_PORT}")
-print(f"API Key: {CONFIGURED_API_KEY[:8]}...")
-try:
-    import torch
-    print(f"torch: {torch.__version__}, CUDA: {torch.cuda.is_available()}")
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
-except Exception as e:
-    print(f"torch check: {e}")
+if __name__ == "__main__":
+    print(f"T68Bot Training API v2 (transformers+PEFT) starting on port {CONFIGURED_PORT}")
+    print(f"API Key: {CONFIGURED_API_KEY[:8]}...")
+    try:
+        import torch
+        print(f"torch: {torch.__version__}, CUDA: {torch.cuda.is_available()}")
+        if torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+    except Exception as e:
+        print(f"torch check: {e}")
 
-print(f"Starting uvicorn on 0.0.0.0:{CONFIGURED_PORT}...")
-uvicorn.run(app, host="0.0.0.0", port=CONFIGURED_PORT, log_level="info")
+    print(f"Starting uvicorn on 0.0.0.0:{CONFIGURED_PORT}...")
+    uvicorn.run(app, host="0.0.0.0", port=CONFIGURED_PORT, log_level="info")
