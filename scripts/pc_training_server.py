@@ -43,9 +43,9 @@ def run_training(job_id: str, req: dict):
         if not torch.cuda.is_available():
             raise RuntimeError(f"CUDA not available. torch version: {torch.__version__}, cuda compiled: {torch.version.cuda}")
 
-        from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+        from transformers import AutoModelForCausalLM, AutoTokenizer
         from peft import LoraConfig, get_peft_model, TaskType
-        from trl import SFTTrainer
+        from trl import SFTTrainer, SFTConfig
         from datasets import load_dataset
 
         JOB_STATUS[job_id]["progress"] = f"Loading {req["base_model"]}..."
@@ -88,13 +88,16 @@ def run_training(job_id: str, req: dict):
         tokenizer.padding_side = "right"
         model.config.pad_token_id = tokenizer.pad_token_id
 
+        import os
+        os.makedirs(f"C:\\t68bot\\train-{job_id}", exist_ok=True)
+
         trainer = SFTTrainer(
             model=model,
             processing_class=tokenizer,
             train_dataset=ds,
-            max_seq_length=req["max_seq_length"],
-            args=TrainingArguments(
+            args=SFTConfig(
                 output_dir=f"C:\\t68bot\\train-{job_id}",
+                max_seq_length=req["max_seq_length"],
                 per_device_train_batch_size=req["batch_size"],
                 gradient_accumulation_steps=4,
                 num_train_epochs=req["epochs"],
@@ -105,6 +108,7 @@ def run_training(job_id: str, req: dict):
                 warmup_ratio=0.05,
                 lr_scheduler_type="cosine",
                 report_to="none",
+                dataset_text_field="text",
             ),
         )
         trainer.train()
