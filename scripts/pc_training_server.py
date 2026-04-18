@@ -84,9 +84,13 @@ def run_training(job_id: str, req: dict):
         JOB_STATUS[job_id]["status"] = "training"
         JOB_STATUS[job_id]["progress"] = "Training..."
 
+        # Set tokenizer padding side for training
+        tokenizer.padding_side = "right"
+        model.config.pad_token_id = tokenizer.pad_token_id
+
         trainer = SFTTrainer(
             model=model,
-            tokenizer=tokenizer,
+            processing_class=tokenizer,
             train_dataset=ds,
             dataset_text_field="text",
             max_seq_length=req["max_seq_length"],
