@@ -92,7 +92,6 @@ def run_training(job_id: str, req: dict):
             model=model,
             processing_class=tokenizer,
             train_dataset=ds,
-            dataset_text_field="text",
             max_seq_length=req["max_seq_length"],
             args=TrainingArguments(
                 output_dir=f"C:\\t68bot\\train-{job_id}",
