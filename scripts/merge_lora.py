@@ -27,8 +27,24 @@ model = PeftModel.from_pretrained(model, ADAPTER_REPO, token=HF_TOKEN)
 print("Merging adapter into base model...")
 model = model.merge_and_unload()
 
-print(f"Pushing merged model to {OUTPUT_REPO}...")
-model.push_to_hub(OUTPUT_REPO, token=HF_TOKEN, max_shard_size="2GB")
-tokenizer.push_to_hub(OUTPUT_REPO, token=HF_TOKEN)
+# Save locally first (avoids stuck push_to_hub)
+SAVE_PATH = r"C:\t68bot\sn66-ft-pc-v1-merged"
+print(f"Saving merged model locally to {SAVE_PATH}...")
+model.save_pretrained(SAVE_PATH, max_shard_size="2GB")
+tokenizer.save_pretrained(SAVE_PATH)
+print("Local save complete!")
 
+# Upload using chunked upload_folder (handles large files better)
+from huggingface_hub import HfApi, create_repo
+api = HfApi()
+try:
+    create_repo(OUTPUT_REPO, token=HF_TOKEN, exist_ok=True)
+except: pass
+print(f"Uploading to {OUTPUT_REPO}...")
+api.upload_folder(
+    folder_path=SAVE_PATH,
+    repo_id=OUTPUT_REPO,
+    token=HF_TOKEN,
+    repo_type="model",
+)
 print("DONE! Merged model at:", f"https://huggingface.co/{OUTPUT_REPO}")
