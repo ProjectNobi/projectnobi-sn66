@@ -43,22 +43,30 @@ def run_training(job_id: str, req: dict):
         if not torch.cuda.is_available():
             raise RuntimeError(f"CUDA not available. torch version: {torch.__version__}, cuda compiled: {torch.version.cuda}")
 
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-        from peft import LoraConfig, get_peft_model, TaskType
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+        from peft import LoraConfig, get_peft_model, TaskType, prepare_model_for_kbit_training
         from trl import SFTTrainer, SFTConfig
         from datasets import load_dataset
 
-        JOB_STATUS[job_id]["progress"] = f"Loading {req["base_model"]}..."
+        JOB_STATUS[job_id]["progress"] = f"Loading {req['base_model']}..."
         tokenizer = AutoTokenizer.from_pretrained(req["base_model"], token=req["hf_token"])
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
+        # QLoRA: 4-bit quantization — fits 7B in ~5GB VRAM instead of ~14GB
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
         model = AutoModelForCausalLM.from_pretrained(
             req["base_model"],
-            torch_dtype=torch.float16,
+            quantization_config=bnb_config,
+            device_map="cuda:0",
             token=req["hf_token"],
         )
-        model = model.to("cuda:0")
+        model = prepare_model_for_kbit_training(model)
 
         lora_config = LoraConfig(
             r=req["lora_rank"],
@@ -102,7 +110,9 @@ def run_training(job_id: str, req: dict):
                 gradient_accumulation_steps=4,
                 num_train_epochs=req["epochs"],
                 learning_rate=2e-4,
-                fp16=True,
+                fp16=False,
+                bf16=True,
+                gradient_checkpointing=True,
                 logging_steps=10,
                 save_strategy="no",
                 warmup_ratio=0.05,
