@@ -35,7 +35,7 @@ def check_key(x_api_key: str = Header(...)):
     if x_api_key != CONFIGURED_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
-def run_training(job_id: str, req: TrainRequest):
+def run_training(job_id: str, req: dict):
     try:
         import torch
         JOB_STATUS[job_id] = {"status": "starting", "progress": f"CUDA: {torch.cuda.is_available()}, GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'}", "model_url": "", "error": ""}
@@ -48,21 +48,21 @@ def run_training(job_id: str, req: TrainRequest):
         from trl import SFTTrainer
         from datasets import load_dataset
 
-        JOB_STATUS[job_id]["progress"] = f"Loading {req.base_model}..."
-        tokenizer = AutoTokenizer.from_pretrained(req.base_model, token=req.hf_token)
+        JOB_STATUS[job_id]["progress"] = f"Loading {req["base_model"]}..."
+        tokenizer = AutoTokenizer.from_pretrained(req["base_model"], token=req["hf_token"])
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
         model = AutoModelForCausalLM.from_pretrained(
-            req.base_model,
+            req["base_model"],
             torch_dtype=torch.float16,
             device_map="auto",
-            token=req.hf_token,
+            token=req["hf_token"],
         )
 
         lora_config = LoraConfig(
-            r=req.lora_rank,
-            lora_alpha=req.lora_rank * 2,
+            r=req["lora_rank"],
+            lora_alpha=req["lora_rank"] * 2,
             target_modules=["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
             lora_dropout=0.05,
             bias="none",
@@ -71,12 +71,12 @@ def run_training(job_id: str, req: TrainRequest):
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
 
-        JOB_STATUS[job_id]["progress"] = f"Loading dataset {req.hf_dataset}..."
-        ds = load_dataset(req.hf_dataset, split="train", token=req.hf_token)
+        JOB_STATUS[job_id]["progress"] = f"Loading dataset {req["hf_dataset"]}..."
+        ds = load_dataset(req["hf_dataset"], split="train", token=req["hf_token"])
 
         def format_row(row):
-            inst = row.get(req.field_instruction, "")
-            out = row.get(req.field_output, "")
+            inst = row.get(req["field_instruction"], "")
+            out = row.get(req["field_output"], "")
             return {"text": f"### Instruction:\n{inst}\n\n### Response:\n{out}"}
 
         ds = ds.map(format_row, remove_columns=ds.column_names, num_proc=1)
@@ -89,12 +89,12 @@ def run_training(job_id: str, req: TrainRequest):
             tokenizer=tokenizer,
             train_dataset=ds,
             dataset_text_field="text",
-            max_seq_length=req.max_seq_length,
+            max_seq_length=req["max_seq_length"],
             args=TrainingArguments(
                 output_dir=f"C:\\t68bot\\train-{job_id}",
-                per_device_train_batch_size=req.batch_size,
+                per_device_train_batch_size=req["batch_size"],
                 gradient_accumulation_steps=4,
-                num_train_epochs=req.epochs,
+                num_train_epochs=req["epochs"],
                 learning_rate=2e-4,
                 fp16=True,
                 logging_steps=10,
@@ -106,14 +106,14 @@ def run_training(job_id: str, req: TrainRequest):
         )
         trainer.train()
 
-        JOB_STATUS[job_id]["progress"] = f"Pushing to {req.hf_output_repo}..."
-        model.push_to_hub(req.hf_output_repo, token=req.hf_token)
-        tokenizer.push_to_hub(req.hf_output_repo, token=req.hf_token)
+        JOB_STATUS[job_id]["progress"] = f"Pushing to {req["hf_output_repo"]}..."
+        model.push_to_hub(req["hf_output_repo"], token=req["hf_token"])
+        tokenizer.push_to_hub(req["hf_output_repo"], token=req["hf_token"])
 
         JOB_STATUS[job_id].update({
             "status": "success",
             "progress": "Done!",
-            "model_url": f"https://huggingface.co/{req.hf_output_repo}"
+            "model_url": f"https://huggingface.co/{req["hf_output_repo"]}"
         })
 
     except Exception as e:
@@ -134,7 +134,7 @@ def start_training(req: TrainRequest, x_api_key: str = Header(...)):
     check_key(x_api_key)
     job_id = secrets.token_hex(8)
     JOB_STATUS[job_id] = {"status": "queued", "progress": "", "model_url": "", "error": ""}
-    threading.Thread(target=run_training, args=(job_id, req), daemon=True).start()
+    threading.Thread(target=run_training, args=(job_id, req.model_dump()), daemon=True).start()
     return {"job_id": job_id, "status": "queued"}
 
 @app.get("/status/{job_id}")
