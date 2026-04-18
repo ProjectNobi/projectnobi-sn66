@@ -123,9 +123,20 @@ def run_training(job_id: str, req: dict):
         )
         trainer.train()
 
-        JOB_STATUS[job_id]["progress"] = f"Pushing to {req["hf_output_repo"]}..."
-        model.push_to_hub(req["hf_output_repo"], token=req["hf_token"])
-        tokenizer.push_to_hub(req["hf_output_repo"], token=req["hf_token"])
+        # Save locally first, then push (avoids hanging on large uploads)
+        save_path = f"C:\\t68bot\\model-{job_id}"
+        JOB_STATUS[job_id]["progress"] = f"Saving model locally to {save_path}..."
+        model.save_pretrained(save_path)
+        tokenizer.save_pretrained(save_path)
+        JOB_STATUS[job_id]["progress"] = f"Pushing to {req['hf_output_repo']}..."
+        from huggingface_hub import HfApi
+        api = HfApi()
+        api.upload_folder(
+            folder_path=save_path,
+            repo_id=req["hf_output_repo"],
+            token=req["hf_token"],
+            repo_type="model",
+        )
 
         JOB_STATUS[job_id].update({
             "status": "success",
