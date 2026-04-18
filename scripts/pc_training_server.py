@@ -159,16 +159,5 @@ try:
 except Exception as e:
     print(f"torch check: {e}")
 
-import socket
-# Check if port is already in use before starting
-try:
-    test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    test_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    test_sock.bind(('0.0.0.0', CONFIGURED_PORT))
-    test_sock.close()
-except OSError as e:
-    print(f"ERROR: Port {CONFIGURED_PORT} is already in use. Kill the existing process first.")
-    print(f"Run: netstat -ano | findstr :{CONFIGURED_PORT}")
-    import sys; sys.exit(1)
-
-uvicorn.run(app, host="0.0.0.0", port=CONFIGURED_PORT, log_level="warning")
+print(f"Starting uvicorn on 0.0.0.0:{CONFIGURED_PORT}...")
+uvicorn.run(app, host="0.0.0.0", port=CONFIGURED_PORT, log_level="info")
