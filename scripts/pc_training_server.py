@@ -56,9 +56,9 @@ def run_training(job_id: str, req: dict):
         model = AutoModelForCausalLM.from_pretrained(
             req["base_model"],
             torch_dtype=torch.float16,
-            device_map="auto",
             token=req["hf_token"],
         )
+        model = model.to("cuda:0")
 
         lora_config = LoraConfig(
             r=req["lora_rank"],
