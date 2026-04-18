@@ -105,7 +105,7 @@ def run_training(job_id: str, req: dict):
             train_dataset=ds,
             args=SFTConfig(
                 output_dir=f"C:\\t68bot\\train-{job_id}",
-                max_seq_length=req["max_seq_length"],
+                max_length=req["max_seq_length"],
                 per_device_train_batch_size=req["batch_size"],
                 gradient_accumulation_steps=4,
                 num_train_epochs=req["epochs"],
