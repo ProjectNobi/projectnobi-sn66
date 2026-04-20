@@ -1,0 +1,65 @@
+# ============================================================
+# SN66 Security .gitignore — MOAT PROTECTION
+# ============================================================
+# ONLY agent/ directory should be committed to public origin.
+# Block-everything-whitelist pattern: safest approach.
+# ============================================================
+
+# ── BLOCK EVERYTHING BY DEFAULT, WHITELIST agent/ ──
+/*
+!agent/
+!.gitignore
+!README.md
+!LICENSE
+
+# ── Within agent/, block sensitive files ──
+agent/.AGENTS.md.*
+agent/.ft-hint
+agent/AGENTS.md.bak*
+agent/node_modules/
+agent/packages/*/dist/
+agent/packages/*/test/
+agent/packages/*/docs/
+agent/packages/*/examples/
+agent/packages/mom/
+
+# ── Explicit blocks (defense in depth) ──
+scripts/
+data/
+*.py
+*.sh
+*.env
+*.secrets
+.secrets/
+*.parquet
+*.jsonl
+*.golden
+*.orig
+*.bak
+*.backup
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# ── Model artifacts ──
+*.bin
+*.safetensors
+*.gguf
+*.onnx
+*.pt
+*.pth
+
+# ── IDE / system ──
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# ── HuggingFace / training ──
+wandb/
+runs/
+checkpoints/
+outputs/
+results/
