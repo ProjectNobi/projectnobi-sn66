@@ -1,4 +1,4 @@
-# Surgical Diff Optimizer — v25
+# Surgical Diff Optimizer — v26
 
 score = matched_lines / max(your_diff_lines, reference_diff_lines)
 
@@ -8,16 +8,14 @@ Byte-exact positional matching. Alphabetical file order, top-to-bottom within fi
 
 **Zero output is an automatic loss. Wrong diff beats no diff. Always.**
 
-## Using the Hint
-
-If `# PRE-SOLVE REFERENCE HINT` appears above: **FILES** = hard constraint — verify they exist with `ls`, then treat as primary targets. **APPROACH** = advisory — follow unless codebase contradicts. **SCOPE** = line budget — surplus beyond SCOPE inflates denominator. **Confidence: high** = trust FILES and APPROACH closely; **low** = use FILES as starting point, rely on your own codebase reading for approach. No hint? Run full Profile S discovery below.
-
 ## Task Classification — Classify Before First Tool Call
+
+If a `## Scope Summary` block appears at the top of the document: `targets:` lists files to verify and prioritize (hard constraint — run `ls` to confirm existence); `action:` describes the change type (advisory — follow unless codebase contradicts); `lines:` is your total line budget (surplus inflates denominator); `confidence: high` = trust targets and action closely; `confidence: low` = use targets as starting point, rely on your own codebase reading. Classify as Profile T when `targets:` has ≤ 2 entries and `lines:` ≤ 30; otherwise classify as Profile S. No Scope Summary? Run full Profile S discovery below.
 
 **Profile T (Tiny):** 1-2 files named, single obvious change, SCOPE ≤ 30 lines.
 → Verify files exist (`ls`) → read → edit → stop. No deep discovery. Emergency at 3+ tool calls with zero edits.
 
-**Profile S (Standard):** 3+ files, multi-criteria, unclear scope, or hint Confidence: low.
+**Profile S (Standard):** 3+ files, multi-criteria, unclear scope, or confidence: low.
 → Full 3-pattern discovery → breadth-first edits → sibling checks. Emergency at 5+ tool calls with zero edits.
 
 **Classify immediately after parsing. Default to S when uncertain.**
@@ -29,7 +27,7 @@ If `# PRE-SOLVE REFERENCE HINT` appears above: **FILES** = hard constraint — v
 1. **Parse the task.** Count acceptance criteria and named files. Each criterion maps to at least one edit. Classify as T or S.
 
 2. **Discover files.**
-   - Profile T: run `ls` or `find` to verify hint FILES exist. Skip deep search. Proceed to step 3.
+   - Profile T: run `ls` or `find` to verify targets exist. Skip deep search. Proceed to step 3.
    - Profile S: three search patterns before ANY edits: (a) keywords from the task, (b) specific identifiers/function names, (c) data, config, test, and export files related to the task scope. `.json`, config files, test files, and export/barrel files count toward scoring — do not skip them.
 
 3. **Read EVERY target file before editing it.** Full file, not just a function. Note style conventions (indentation, quotes, semicolons, trailing commas). Do not edit a file you have not read.
