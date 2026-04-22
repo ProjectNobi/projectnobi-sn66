@@ -1,15 +1,19 @@
 /**
- * System prompt construction and project context loading
+ * Tierra-v35 — System prompt with unified scoring preamble + 3-phase discovery
  *
- * Enhanced with 3-phase Task Discovery (Dragon Lord 🐉 build 2026-04-22):
- *   Phase 1: buildTaskDiscoverySection() — keyword grep + file ranking + style detection
- *   Phase 2: Enhanced discovery — sibling detection, known patterns, template finder
- *   Phase 3: 32B knowledge distillation — validated patterns from fine-tuned model
+ * Changes from v34:
+ * - Merged two preamble constants into ONE TAU_SCORING_PREAMBLE (~80 lines vs ~260)
+ * - Discovery output capped at 8 files (was 10), sorted alphabetically
+ * - Added DISCOVERY ORDER directive from nexus-v3
+ * - Kept all Phase 1/2/3 discovery, filename grep, concentration, style detection
+ * - Kept detectConcentration matchCount sort fix
+ *
+ * Build: 2026-04-22 by Claude Opus for T68Bot
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { getDocsPath, getExamplesPath, getReadmePath } from "../config.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
 
@@ -27,55 +31,34 @@ const KNOWN_PATTERNS: Record<string, string[]> = {
 	style: ["src/styles", "src/css", "styles"],
 	middleware: ["src/middleware", "src/middlewares", "middleware"],
 	handler: ["src/handlers", "src/controllers", "handlers"],
-	// Go-specific patterns (Go = #1 extension at 493/2085 training pairs)
 	package: ["cmd", "internal", "pkg", "api"],
 	func: ["cmd", "internal", "pkg", "handlers", "services"],
 	model: ["models", "internal/models", "pkg/models", "src/models"],
-	// Java-specific patterns
 	controller: ["src/main/java", "src/main/kotlin", "src/controllers"],
 	repository: ["src/main/java", "src/repositories", "repositories"],
 };
 
 // ─── Phase 3: Validated patterns from 32B fine-tuned model ────────────────
-// 32B trained on 2,085 winning diffs predicts these file paths per task type.
-// Used as secondary signal to boost confidence when grep results align.
-// Real patterns extracted from 1,950 SN66 training samples (2026-04-22)
-// Top dirs: src/ (27.3%), packages/ (24.8%), supabase/ (4.8%), app/ (4.6%), frontend/ (4.2%)
 const VALIDATED_32B_PATTERNS: Record<string, string[]> = {
-	// UI/frontend — 703 component tasks, 665 page tasks, 351 button tasks
 	component: ["src/components", "src/app", "frontend/src", "src/pages", "app/components", "landing/src", "app/src"],
-	// API/backend — 998 api tasks, 286 endpoint tasks
 	api_route: ["src/app/api", "src/routes", "pages/api", "app/api", "server/routes", "apps/developer-portal-api", "backend/src"],
-	// Service layer — 437 service tasks
 	service: ["src/main", "src/services", "internal/services", "packages/core", "apps/developer-portal-api"],
-	// Java/Kotlin — 186 java tasks
 	service_java: ["src/main/java", "src/main/kotlin", "src/test"],
-	// Go — dominant in training (packages/typespec-go 13.3%, autorest.go 10.4%)
 	go_packages: ["packages/typespec-go", "packages/autorest.go", "cmd", "internal", "pkg"],
 	go_internal: ["internal", "internal/handlers", "internal/services", "internal/models"],
-	// Database/migration — 282 database tasks, 39 migration tasks
 	migration: ["database/migrations", "migrations", "db/migrations", "prisma/migrations", "supabase/functions"],
-	// Config — 522 config tasks
 	config: ["src/config", "config", "src/main", ".env", "src/app"],
-	// Supabase/serverless — 91 tasks (4.7%)
 	serverless: ["supabase/functions", "app/api", "pages/api"],
-	// Auth — 871 auth tasks (surprisingly high)
 	auth: ["src/pages", "src/app", "frontend/src", "apps/developer-portal-api", "src/main"],
-	// Test — 858 test tasks
 	test: ["src/test", "tests/api_contracts", "src/main", "test"],
-	// Hooks — 211 hook tasks (supabase-heavy)
 	hook: ["supabase/functions", "src/components", "src/hooks", "lib/hooks", "src/app"],
-	// Style/CSS — 120+196 tasks
 	style: ["src/components", "landing/src", "src/app", "public", "src/styles"],
-	// Forms — 1014 form tasks
 	form: ["src/components", "src/pages", "frontend/src", "supabase/functions", "src/app"],
-	// Middleware — 56 tasks
 	middleware: ["src/Infrastructure", "backends/go-gin", "backends/python-fastapi", "server", "src/middleware"],
-	// Monorepo patterns — common in training (packages/ 24.8%, apps/ 3.4%)
 	monorepo: ["packages/core", "apps/web", "apps/developer-portal", "libs"],
 };
 
-// ─── Excluded file patterns (generated, lock, minified) ──────────────────
+// ─── Excluded file patterns ──────────────────────────────────────────────
 const EXCLUDED_FILE_PATTERNS = /package-lock|yarn\.lock|pnpm-lock|\.d\.ts$|\.min\.(js|css)$|\.map$|generated|__generated__|\.snap$|\.svg$|CHANGELOG|LICENSE/i;
 
 // ─── Stop words for keyword extraction ────────────────────────────────────
@@ -104,10 +87,10 @@ const EXCLUDE_DIRS = [
 ];
 
 const INCLUDE_EXTS = [
-	"*.ts", "*.tsx", "*.js", "*.jsx", "*.py", "*.css", "*.scss",
+	"*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.py", "*.css", "*.scss",
 	"*.json", "*.html", "*.vue", "*.svelte", "*.go", "*.rs",
 	"*.java", "*.kt", "*.swift", "*.dart", "*.php", "*.rb",
-	"*.cs", "*.cpp", "*.h", "*.sql", "*.yaml", "*.yml", "*.md",
+	"*.cs", "*.cpp", "*.c", "*.h", "*.hpp", "*.sql", "*.yaml", "*.yml", "*.toml", "*.md",
 ];
 
 // ─── Interfaces ───────────────────────────────────────────────────────────
@@ -116,6 +99,7 @@ interface FileMatch {
 	matchedKeywords: string[];
 	matchCount: number;
 	score: number;
+	filenameMatch?: boolean;
 }
 
 interface CodeStyle {
@@ -125,6 +109,20 @@ interface CodeStyle {
 	trailingCommas: boolean;
 }
 
+interface ConcentrationResult {
+	concentrated: boolean;
+	primaryFile: string | null;
+	primaryCount: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Utility
+// ═══════════════════════════════════════════════════════════════════════════
+
+function shellEscape(s: string): string {
+	return s.replace(/'/g, "'\\''");
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Phase 1: Core keyword extraction and grep discovery
 // ═══════════════════════════════════════════════════════════════════════════
@@ -132,55 +130,44 @@ interface CodeStyle {
 function extractKeywords(taskText: string): string[] {
 	const keywords = new Set<string>();
 
-	// Backtick-quoted identifiers
+	// Backtick-quoted identifiers (highest priority)
 	const backtickMatches = taskText.match(/`([^`]+)`/g);
 	if (backtickMatches) {
 		for (const m of backtickMatches) {
-			keywords.add(m.slice(1, -1));
+			const inner = m.slice(1, -1).trim();
+			if (inner.length >= 2 && inner.length <= 80) keywords.add(inner);
 		}
 	}
 
-	// camelCase (lowercase start, has uppercase transition)
+	// camelCase
 	const camelMatches = taskText.match(/\b[a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*\b/g);
-	if (camelMatches) {
-		for (const m of camelMatches) keywords.add(m);
-	}
+	if (camelMatches) for (const m of camelMatches) keywords.add(m);
 
 	// PascalCase
 	const pascalMatches = taskText.match(/\b[A-Z][a-z]+[A-Z][a-zA-Z0-9]*\b/g);
-	if (pascalMatches) {
-		for (const m of pascalMatches) keywords.add(m);
-	}
+	if (pascalMatches) for (const m of pascalMatches) keywords.add(m);
 
 	// snake_case
 	const snakeMatches = taskText.match(/\b[a-z][a-z0-9]*_[a-z][a-z0-9_]*\b/g);
-	if (snakeMatches) {
-		for (const m of snakeMatches) keywords.add(m);
-	}
+	if (snakeMatches) for (const m of snakeMatches) keywords.add(m);
 
 	// kebab-case
 	const kebabMatches = taskText.match(/\b[a-z][a-z0-9]*-[a-z][a-z0-9-]*\b/g);
-	if (kebabMatches) {
-		for (const m of kebabMatches) keywords.add(m);
-	}
+	if (kebabMatches) for (const m of kebabMatches) keywords.add(m);
 
 	// SCREAMING_SNAKE_CASE
 	const screamingMatches = taskText.match(/\b[A-Z][A-Z0-9]*_[A-Z][A-Z0-9_]*\b/g);
-	if (screamingMatches) {
-		for (const m of screamingMatches) keywords.add(m);
-	}
+	if (screamingMatches) for (const m of screamingMatches) keywords.add(m);
 
 	// File paths (contain /)
 	const pathMatches = taskText.match(/(?:[\w.-]+\/)+[\w.-]+/g);
-	if (pathMatches) {
-		for (const m of pathMatches) keywords.add(m);
-	}
+	if (pathMatches) for (const m of pathMatches) keywords.add(m);
 
 	// File extensions (known source extensions)
 	const extMatches = taskText.match(/\b[\w-]+\.\w{1,6}\b/g);
 	if (extMatches) {
 		for (const m of extMatches) {
-			if (/\.(ts|tsx|js|jsx|py|css|json|html|vue|svelte|go|rs|java|kt|swift|dart|php|rb|cs|cpp|h|sql|yaml|yml|md|sh)$/i.test(m)) {
+			if (/\.(ts|tsx|js|jsx|py|css|json|html|vue|svelte|go|rs|java|kt|swift|dart|php|rb|cs|cpp|h|sql|yaml|yml|md|sh|toml)$/i.test(m)) {
 				keywords.add(m);
 			}
 		}
@@ -196,8 +183,8 @@ function extractKeywords(taskText: string): string[] {
 	const deduped = [...new Set(result)];
 	// Prioritize file paths and long identifiers, cap at 15
 	deduped.sort((a, b) => {
-		const aIsPath = a.includes('/') || (a.includes('.') && a.length > 4);
-		const bIsPath = b.includes('/') || (b.includes('.') && b.length > 4);
+		const aIsPath = a.includes("/") || (a.includes(".") && a.length > 4);
+		const bIsPath = b.includes("/") || (b.includes(".") && b.length > 4);
 		if (aIsPath && !bIsPath) return -1;
 		if (!aIsPath && bIsPath) return 1;
 		return b.length - a.length;
@@ -205,74 +192,110 @@ function extractKeywords(taskText: string): string[] {
 	return deduped.slice(0, 15);
 }
 
+function extractNamedFiles(taskText: string): string[] {
+	const matches = taskText.match(/`([^`]+\.[a-zA-Z0-9]{1,6})`/g) || [];
+	return [...new Set(matches.map((f) => f.replace(/`/g, "").trim()))];
+}
+
 function grepForKeywords(keywords: string[], cwd: string): Map<string, Set<string>> {
 	const fileHits = new Map<string, Set<string>>();
-	const excludeArgs = EXCLUDE_DIRS.map((d) => `--exclude-dir=${d}`).join(" ");
-	const includeArgs = INCLUDE_EXTS.map((e) => `--include=${e}`).join(" ");
+	const includeArgs = INCLUDE_EXTS.map((e) => `--include="${e}"`).join(" ");
 
-	// Batch grep: find all files matching ANY keyword first
-	if (keywords.length > 0) {
-		const kwArgs = keywords.map((kw) => `-e '${kw.replace(/'/g, "'\\''")}'`).join(" ");
+	if (keywords.length === 0) return fileHits;
+
+	// Batch grep: find all files matching ANY keyword
+	const kwArgs = keywords.map((kw) => `-e '${shellEscape(kw)}'`).join(" ");
+	try {
+		const cmd = `timeout 5 grep -rlF ${kwArgs} ${includeArgs} . 2>/dev/null | grep -v node_modules | grep -v '/\\.git/' | grep -v '/dist/' | grep -v '/build/' | grep -v '/\\.next/' | grep -v '/target/' | head -80`;
+		const output = execSync(cmd, {
+			cwd,
+			encoding: "utf-8",
+			timeout: 7000,
+			maxBuffer: 1024 * 128,
+		}).trim();
+
+		if (output) {
+			const candidateFiles = output.split("\n").map((f) => f.replace(/^\.\//, ""));
+
+			// Per-keyword grep on candidate files only
+			for (const keyword of keywords) {
+				const safeKw = shellEscape(keyword);
+				for (const filePath of candidateFiles) {
+					const safePath = shellEscape(filePath);
+					try {
+						execSync(`grep -qF '${safeKw}' '${safePath}' 2>/dev/null`, {
+							cwd,
+							encoding: "utf-8",
+							timeout: 1000,
+						});
+						if (!fileHits.has(filePath)) fileHits.set(filePath, new Set());
+						fileHits.get(filePath)!.add(keyword);
+					} catch {
+						// No match
+					}
+				}
+			}
+		}
+	} catch {
+		// Batch grep failed — fall back to per-keyword
+		for (const keyword of keywords.slice(0, 10)) {
+			const safeKw = shellEscape(keyword);
+			try {
+				const cmd = `timeout 2 grep -rlF '${safeKw}' ${includeArgs} . 2>/dev/null | grep -v node_modules | grep -v '/\\.git/' | grep -v '/dist/' | grep -v '/build/' | grep -v '/\\.next/' | head -30`;
+				const output = execSync(cmd, {
+					cwd,
+					encoding: "utf-8",
+					timeout: 3000,
+					maxBuffer: 1024 * 64,
+				}).trim();
+
+				if (output) {
+					for (const fp of output.split("\n")) {
+						const normalized = fp.replace(/^\.\//, "");
+						if (!fileHits.has(normalized)) fileHits.set(normalized, new Set());
+						fileHits.get(normalized)!.add(keyword);
+					}
+				}
+			} catch {
+				continue;
+			}
+		}
+	}
+
+	return fileHits;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 1b: Filename grep — catches files where keyword is in the filename
+// but not content yet (new files, config files, etc.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function findByFilename(keywords: string[], cwd: string): Map<string, Set<string>> {
+	const fileHits = new Map<string, Set<string>>();
+
+	for (const kw of keywords.slice(0, 10)) {
+		if (kw.includes("/") || kw.includes(" ") || kw.length > 40) continue;
+
 		try {
-			const cmd = `timeout 5 grep -rlF ${kwArgs} ${excludeArgs} ${includeArgs} . 2>/dev/null | head -80`;
+			const safeKw = shellEscape(kw);
+			const cmd = `find . -type f -iname "*${safeKw}*" -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" -not -path "*/build/*" -not -path "*/.next/*" -not -path "*/target/*" 2>/dev/null | head -10`;
 			const output = execSync(cmd, {
 				cwd,
 				encoding: "utf-8",
-				timeout: 7000,
-				maxBuffer: 1024 * 128,
+				timeout: 2000,
+				maxBuffer: 1024 * 64,
 			}).trim();
 
 			if (output) {
-				const candidateFiles = output.split("\n").map((f) => f.replace(/^\.\//, ""));
-
-				// Per-keyword grep on candidate files only (much faster than full repo)
-				for (const keyword of keywords) {
-					const safeKw = keyword.replace(/'/g, "'\\''");
-					for (const filePath of candidateFiles) {
-						const safePath = filePath.replace(/'/g, "'\\''");
-						try {
-							execSync(`grep -qF '${safeKw}' '${safePath}' 2>/dev/null`, {
-								cwd,
-								encoding: "utf-8",
-								timeout: 1000,
-							});
-							// Match found
-							if (!fileHits.has(filePath)) {
-								fileHits.set(filePath, new Set());
-							}
-							fileHits.get(filePath)!.add(keyword);
-						} catch {
-							// No match in this file for this keyword
-						}
-					}
+				for (const line of output.split("\n")) {
+					const file = line.trim().replace(/^\.\//, "");
+					if (!file || EXCLUDED_FILE_PATTERNS.test(file)) continue;
+					if (!fileHits.has(file)) fileHits.set(file, new Set());
+					fileHits.get(file)!.add(kw);
 				}
 			}
 		} catch {
-			// Batch grep failed — fall back to per-keyword
-			for (const keyword of keywords.slice(0, 10)) {
-				const safeKw = keyword.replace(/'/g, "'\\''");
-				try {
-					const cmd = `timeout 2 grep -rlF '${safeKw}' ${excludeArgs} ${includeArgs} . 2>/dev/null | head -30`;
-					const output = execSync(cmd, {
-						cwd,
-						encoding: "utf-8",
-						timeout: 3000,
-						maxBuffer: 1024 * 64,
-					}).trim();
-
-					if (output) {
-						for (const fp of output.split("\n")) {
-							const normalized = fp.replace(/^\.\//, "");
-							if (!fileHits.has(normalized)) {
-								fileHits.set(normalized, new Set());
-							}
-							fileHits.get(normalized)!.add(keyword);
-						}
-					}
-				} catch {
-					continue;
-				}
-			}
+			continue;
 		}
 	}
 
@@ -283,7 +306,6 @@ function grepForKeywords(keywords: string[], cwd: string): Map<string, Set<strin
 // Phase 2: Enhanced discovery — patterns, siblings, templates
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Check for sibling files (tests, index, styles) near discovered files */
 function findSiblings(filePath: string, cwd: string): string[] {
 	const siblings: string[] = [];
 	const dir = filePath.substring(0, filePath.lastIndexOf("/"));
@@ -292,43 +314,28 @@ function findSiblings(filePath: string, cwd: string): string[] {
 	if (!dir) return siblings;
 
 	const siblingPatterns = [
-		`${dir}/index.ts`,
-		`${dir}/index.tsx`,
-		`${dir}/${baseName}.test.ts`,
-		`${dir}/${baseName}.test.tsx`,
-		`${dir}/${baseName}.spec.ts`,
-		`${dir}/${baseName}.spec.tsx`,
-		`${dir}/${baseName}.module.css`,
-		`${dir}/${baseName}.module.scss`,
-		`${dir}/${baseName}.styles.ts`,
-		`${dir}/${baseName}.styles.tsx`,
+		`${dir}/index.ts`, `${dir}/index.tsx`,
+		`${dir}/${baseName}.test.ts`, `${dir}/${baseName}.test.tsx`,
+		`${dir}/${baseName}.spec.ts`, `${dir}/${baseName}.spec.tsx`,
+		`${dir}/${baseName}.module.css`, `${dir}/${baseName}.module.scss`,
+		`${dir}/${baseName}.styles.ts`, `${dir}/${baseName}.styles.tsx`,
 	];
 
 	try {
-		const cmd = `ls ${siblingPatterns.map((p) => `'${p.replace(/'/g, "'\\''")}'`).join(" ")} 2>/dev/null`;
-		const output = execSync(cmd, {
-			cwd,
-			encoding: "utf-8",
-			timeout: 2000,
-			maxBuffer: 1024 * 16,
-		}).trim();
+		const cmd = `ls ${siblingPatterns.map((p) => `'${shellEscape(p)}'`).join(" ")} 2>/dev/null`;
+		const output = execSync(cmd, { cwd, encoding: "utf-8", timeout: 2000, maxBuffer: 1024 * 16 }).trim();
 
 		if (output) {
 			for (const s of output.split("\n")) {
 				const normalized = s.replace(/^\.\//, "");
-				if (normalized && normalized !== filePath) {
-					siblings.push(normalized);
-				}
+				if (normalized && normalized !== filePath) siblings.push(normalized);
 			}
 		}
-	} catch {
-		// No siblings found
-	}
+	} catch { /* No siblings */ }
 
 	return siblings;
 }
 
-/** Search KNOWN_PATTERNS directories for task-type matches */
 function searchKnownPatterns(taskText: string, cwd: string): Map<string, number> {
 	const bonusFiles = new Map<string, number>();
 	const taskLower = taskText.toLowerCase();
@@ -338,13 +345,8 @@ function searchKnownPatterns(taskText: string, cwd: string): Map<string, number>
 
 		for (const dir of dirs) {
 			try {
-				const cmd = `find '${dir.replace(/'/g, "'\\''")}'  -maxdepth 3 -type f \\( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.py' -o -name '*.go' -o -name '*.java' -o -name '*.php' \\) 2>/dev/null | head -15`;
-				const output = execSync(cmd, {
-					cwd,
-					encoding: "utf-8",
-					timeout: 2000,
-					maxBuffer: 1024 * 32,
-				}).trim();
+				const cmd = `find '${shellEscape(dir)}' -maxdepth 3 -type f \\( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.jsx' -o -name '*.py' -o -name '*.go' -o -name '*.java' -o -name '*.php' \\) 2>/dev/null | head -15`;
+				const output = execSync(cmd, { cwd, encoding: "utf-8", timeout: 2000, maxBuffer: 1024 * 32 }).trim();
 
 				if (output) {
 					for (const fp of output.split("\n")) {
@@ -352,51 +354,33 @@ function searchKnownPatterns(taskText: string, cwd: string): Map<string, number>
 						bonusFiles.set(normalized, (bonusFiles.get(normalized) ?? 0) + 3);
 					}
 				}
-			} catch {
-				continue;
-			}
+			} catch { continue; }
 		}
 	}
 
 	return bonusFiles;
 }
 
-/** Find template files for "Add X" type tasks */
 function findTemplates(taskText: string, cwd: string): string[] {
 	const templates: string[] = [];
 
-	// Detect "Add/Create <Name> <Type>" pattern
-	const addMatch = taskText.match(/(?:add|create|implement|build)\s+(?:a\s+)?(?:new\s+)?(\w+)\s+(component|route|page|middleware|service|hook|handler|controller)/i);
+	const addMatch = taskText.match(
+		/(?:add|create|implement|build)\s+(?:a\s+)?(?:new\s+)?(\w+)\s+(component|route|page|middleware|service|hook|handler|controller)/i,
+	);
 	if (!addMatch) return templates;
 
-	const name = addMatch[1];
 	const type = addMatch[2].toLowerCase();
-
-	// Map type to likely file extensions and directories
 	const typeExtMap: Record<string, string> = {
-		component: "*.tsx",
-		route: "*.ts",
-		page: "*.tsx",
-		middleware: "*.ts",
-		service: "*.ts",
-		hook: "*.ts",
-		handler: "*.ts",
-		controller: "*.ts",
+		component: "*.tsx", route: "*.ts", page: "*.tsx", middleware: "*.ts",
+		service: "*.ts", hook: "*.ts", handler: "*.ts", controller: "*.ts",
 	};
-
 	const ext = typeExtMap[type] ?? "*.ts";
 	const patternDirs = KNOWN_PATTERNS[type] ?? KNOWN_PATTERNS["service"] ?? ["src"];
 
 	for (const dir of patternDirs.slice(0, 3)) {
 		try {
-			// Find existing files of the same type as templates
-			const cmd = `find '${dir.replace(/'/g, "'\\''")}'  -maxdepth 3 -name '${ext}' -type f 2>/dev/null | head -5`;
-			const output = execSync(cmd, {
-				cwd,
-				encoding: "utf-8",
-				timeout: 2000,
-				maxBuffer: 1024 * 16,
-			}).trim();
+			const cmd = `find '${shellEscape(dir)}' -maxdepth 3 -name '${ext}' -type f 2>/dev/null | head -5`;
+			const output = execSync(cmd, { cwd, encoding: "utf-8", timeout: 2000, maxBuffer: 1024 * 16 }).trim();
 
 			if (output) {
 				for (const fp of output.split("\n")) {
@@ -404,35 +388,7 @@ function findTemplates(taskText: string, cwd: string): string[] {
 					if (normalized) templates.push(normalized);
 				}
 			}
-		} catch {
-			continue;
-		}
-	}
-
-	// Also grep for similar name patterns (e.g., *Profile*.tsx for UserProfile)
-	if (name.length >= 4) {
-		try {
-			const safeName = name.replace(/'/g, "'\\''");
-			const excludeArgs = EXCLUDE_DIRS.map((d) => `--exclude-dir=${d}`).join(" ");
-			const cmd = `timeout 2 grep -rlF '${safeName}' ${excludeArgs} --include='${ext}' . 2>/dev/null | head -5`;
-			const output = execSync(cmd, {
-				cwd,
-				encoding: "utf-8",
-				timeout: 3000,
-				maxBuffer: 1024 * 16,
-			}).trim();
-
-			if (output) {
-				for (const fp of output.split("\n")) {
-					const normalized = fp.replace(/^\.\//, "");
-					if (normalized && !templates.includes(normalized)) {
-						templates.push(normalized);
-					}
-				}
-			}
-		} catch {
-			// ignore
-		}
+		} catch { continue; }
 	}
 
 	return templates.slice(0, 5);
@@ -442,39 +398,32 @@ function findTemplates(taskText: string, cwd: string): string[] {
 // Phase 3: 32B-validated pattern boosting
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Boost scores for files matching 32B-validated patterns */
 function apply32BBoost(taskText: string, fileScores: Map<string, number>): void {
 	const taskLower = taskText.toLowerCase();
 
+	const PATTERN_MATCHERS: Record<string, RegExp> = {
+		component: /component|button|modal|dialog|page|layout|card|sidebar|header|footer|nav|spinner|loading|widget|panel|drawer/i,
+		api_route: /api|route|endpoint|rest|graphql|handler|controller/i,
+		service: /service|repository|provider|manager|layer|business.?logic/i,
+		service_java: /java|spring|kotlin|bean|repository|jpa|hibernate/i,
+		go_packages: /\.go\b|func\s|package\s|goroutine|interface\s|struct\s|go\s+mod/i,
+		go_internal: /internal|handler|server\.go|main\.go/i,
+		migration: /migration|database|table|column|schema|prisma|alembic|knex/i,
+		config: /config|configuration|setting|env|environment|redis|cach/i,
+		serverless: /supabase|serverless|edge.?function|lambda|cloud.?function/i,
+		auth: /auth|login|signup|register|password|token|session|oauth|jwt|permission/i,
+		test: /test|spec|jest|vitest|pytest|mocha|cypress|playwright|e2e|unit.?test/i,
+		hook: /hook|useffect|usestate|use[A-Z]|lifecycle|supabase.?function/i,
+		style: /style|css|scss|sass|tailwind|theme|design.?token|color|font|spacing/i,
+		form: /form|input|select|checkbox|radio|validation|submit|field|textarea/i,
+		middleware: /middleware|interceptor|guard|pipe|filter|cors|rate.?limit/i,
+		monorepo: /monorepo|workspace|package|lerna|turborepo|nx\s/i,
+	};
+
 	for (const [patternKey, dirs] of Object.entries(VALIDATED_32B_PATTERNS)) {
-		// Match task to pattern type — regexes derived from 1,950 real SN66 training samples
-		const PATTERN_MATCHERS: Record<string, RegExp> = {
-			component: /component|button|modal|dialog|page|layout|card|sidebar|header|footer|nav|spinner|loading|widget|panel|drawer/i,
-			api_route: /api|route|endpoint|rest|graphql|handler|controller/i,
-			service: /service|repository|provider|manager|layer|business.?logic/i,
-			service_java: /java|spring|kotlin|bean|repository|jpa|hibernate/i,
-			go_packages: /\.go\b|func\s|package\s|goroutine|interface\s|struct\s|go\s+mod/i,
-			go_internal: /internal|handler|server\.go|main\.go/i,
-			migration: /migration|database|table|column|schema|prisma|alembic|knex/i,
-			config: /config|configuration|setting|env|environment|redis|cach/i,
-			serverless: /supabase|serverless|edge.?function|lambda|cloud.?function/i,
-			auth: /auth|login|signup|register|password|token|session|oauth|jwt|permission/i,
-			test: /test|spec|jest|vitest|pytest|mocha|cypress|playwright|e2e|unit.?test/i,
-			hook: /hook|useffect|usestate|use[A-Z]|lifecycle|supabase.?function/i,
-			style: /style|css|scss|sass|tailwind|theme|design.?token|color|font|spacing/i,
-			form: /form|input|select|checkbox|radio|validation|submit|field|textarea/i,
-			middleware: /middleware|interceptor|guard|pipe|filter|cors|rate.?limit/i,
-			monorepo: /monorepo|workspace|package|lerna|turborepo|nx\s/i,
-		};
 		const matcher = PATTERN_MATCHERS[patternKey];
-		let matches = false;
-		if (matcher && matcher.test(taskLower)) {
-			matches = true;
-		}
+		if (!matcher || !matcher.test(taskLower)) continue;
 
-		if (!matches) continue;
-
-		// Boost files whose paths contain validated directory patterns
 		for (const [filePath, currentScore] of fileScores) {
 			for (const dir of dirs) {
 				if (filePath.includes(dir)) {
@@ -487,20 +436,21 @@ function apply32BBoost(taskText: string, fileScores: Map<string, number>): void 
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// File ranking (combines Phase 1 grep + Phase 2 patterns + Phase 3 boost)
+// File ranking (Phase 1 grep + Phase 1b filename + Phase 2 + Phase 3)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function rankFiles(
 	grepHits: Map<string, Set<string>>,
+	filenameHits: Map<string, Set<string>>,
 	patternBonus: Map<string, number>,
 	taskText: string,
 ): FileMatch[] {
 	const fileScores = new Map<string, number>();
 	const fileKeywords = new Map<string, string[]>();
+	const filenameMatchSet = new Set<string>();
 
 	// Phase 1: grep keyword match scoring
 	for (const [path, kwSet] of grepHits) {
-		// Weight by keyword specificity (longer = more specific = higher weight)
 		let score = 0;
 		for (const kw of kwSet) {
 			score += kw.length >= 10 ? 15 : kw.length >= 6 ? 12 : 10;
@@ -509,12 +459,22 @@ function rankFiles(
 		fileKeywords.set(path, [...kwSet]);
 	}
 
+	// Phase 1b: filename grep scoring (+6 per keyword — stronger than content)
+	for (const [path, kwSet] of filenameHits) {
+		const existing = fileScores.get(path) ?? 0;
+		fileScores.set(path, existing + kwSet.size * 6);
+		filenameMatchSet.add(path);
+		if (!fileKeywords.has(path)) fileKeywords.set(path, []);
+		for (const kw of kwSet) {
+			const kws = fileKeywords.get(path)!;
+			if (!kws.includes(kw)) kws.push(kw);
+		}
+	}
+
 	// Phase 2: known pattern bonus
 	for (const [path, bonus] of patternBonus) {
 		fileScores.set(path, (fileScores.get(path) ?? 0) + bonus);
-		if (!fileKeywords.has(path)) {
-			fileKeywords.set(path, ["[pattern]"]);
-		}
+		if (!fileKeywords.has(path)) fileKeywords.set(path, ["[pattern]"]);
 	}
 
 	// Context-aware type bonus
@@ -523,42 +483,27 @@ function rankFiles(
 		let bonus = 0;
 		const ext = path.split(".").pop()?.toLowerCase() ?? "";
 
-		// Component/UI tasks favor .tsx/.jsx/.vue/.svelte
 		if (/component|button|modal|dialog|form|page|layout|card|list|table|sidebar|header|footer|nav|spinner/i.test(taskLower)) {
 			if (["tsx", "jsx", "vue", "svelte"].includes(ext)) bonus += 5;
 		}
-
-		// API/backend tasks favor .ts/.py/.go/.rs/.java
 		if (/api|endpoint|route|handler|controller|middleware|service|resolver/i.test(taskLower)) {
 			if (["ts", "py", "go", "rs", "java", "php", "rb"].includes(ext)) bonus += 5;
 		}
-
-		// Config tasks favor config files
 		if (/config|env|setting|option|theme/i.test(taskLower)) {
 			if (["json", "yaml", "yml", "toml"].includes(ext) || /config/i.test(path)) bonus += 5;
 		}
-
-		// Style tasks favor CSS
 		if (/style|css|theme|color|font|layout|margin|padding/i.test(taskLower)) {
 			if (["css", "scss", "less", "sass"].includes(ext)) bonus += 5;
 		}
 
-		// Directory relevance bonus
 		if (/src\/components\//i.test(path)) bonus += 3;
 		if (/src\/app\//i.test(path)) bonus += 2;
 		if (/src\/pages\//i.test(path)) bonus += 2;
 
-		// Penalty for test/spec files
+		// Penalties
 		if (/\.test\.|\.spec\.|__tests__|__mocks__/i.test(path)) bonus -= 8;
-
-		// Penalty for generated/lock/minified files
 		if (EXCLUDED_FILE_PATTERNS.test(path)) bonus -= 20;
-
-		// Penalty for very deep paths
-		const depth = path.split("/").length;
-		if (depth > 6) bonus -= 2;
-
-		// Penalty for test/mock files when task doesn't mention testing
+		if (path.split("/").length > 6) bonus -= 2;
 		if (!/test|spec|jest|vitest|pytest/i.test(taskText) && /\.test\.|\.spec\.|__tests__|__mocks__|fixtures/i.test(path)) {
 			bonus -= 12;
 		}
@@ -572,17 +517,38 @@ function rankFiles(
 	// Build results
 	const results: FileMatch[] = [];
 	for (const [path, score] of fileScores) {
+		const kws = fileKeywords.get(path) ?? [];
 		results.push({
 			path,
-			matchedKeywords: fileKeywords.get(path) ?? [],
-			matchCount: fileKeywords.get(path)?.length ?? 0,
+			matchedKeywords: kws,
+			matchCount: kws.length,
 			score,
+			filenameMatch: filenameMatchSet.has(path),
 		});
 	}
 
-	// Sort by score descending, take top 15
+	// Sort by score for selection, keep top 15 for internal use
 	results.sort((a, b) => b.score - a.score);
 	return results.slice(0, 15);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Keyword concentration detection
+// ═══════════════════════════════════════════════════════════════════════════
+
+function detectConcentration(ranked: FileMatch[]): ConcentrationResult {
+	if (ranked.length === 0) return { concentrated: false, primaryFile: null, primaryCount: 0 };
+
+	// Sort by matchCount (unique keyword count) — not by score which includes pattern boosts.
+	const byMatchCount = [...ranked].sort((a, b) => b.matchCount - a.matchCount);
+	const top = byMatchCount[0];
+	const second = byMatchCount[1];
+	const concentrated = top.matchCount >= 3 && (!second || top.matchCount >= second.matchCount * 2);
+	return {
+		concentrated,
+		primaryFile: concentrated ? top.path : null,
+		primaryCount: top.matchCount,
+	};
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -594,16 +560,13 @@ function detectStyle(filePaths: string[], cwd: string): CodeStyle | null {
 
 	for (const fp of filePaths.slice(0, 3)) {
 		try {
-			const content = execSync(`head -100 '${fp.replace(/'/g, "'\\''")}'`, {
-				cwd,
-				encoding: "utf-8",
-				timeout: 2000,
-				maxBuffer: 1024 * 32,
-			});
-			samples.push(content);
-		} catch {
-			continue;
-		}
+			const full = resolve(cwd, fp);
+			if (!existsSync(full)) continue;
+			const stat = statSync(full);
+			if (!stat.isFile() || stat.size > 1_000_000) continue;
+			const content = readFileSync(full, "utf8");
+			samples.push(content.split("\n").slice(0, 100).join("\n"));
+		} catch { continue; }
 	}
 
 	if (samples.length === 0) return null;
@@ -611,10 +574,7 @@ function detectStyle(filePaths: string[], cwd: string): CodeStyle | null {
 	const allText = samples.join("\n");
 	const lines = allText.split("\n").filter((l) => l.length > 0);
 
-	// Indent detection
-	let tab = 0;
-	let space2 = 0;
-	let space4 = 0;
+	let tab = 0, space2 = 0, space4 = 0;
 	for (const line of lines) {
 		if (line.startsWith("\t")) tab++;
 		else if (line.startsWith("  ") && !line.startsWith("    ")) space2++;
@@ -622,21 +582,18 @@ function detectStyle(filePaths: string[], cwd: string): CodeStyle | null {
 	}
 	const indent = tab > space2 + space4 ? "tabs" : space4 > space2 ? "4 spaces" : "2 spaces";
 
-	// Quote detection
 	const singleQuotes = (allText.match(/'/g) ?? []).length;
 	const doubleQuotes = (allText.match(/"/g) ?? []).length;
-	const quotes = singleQuotes > doubleQuotes * 0.7 ? "single" : "double";
+	const quotes = singleQuotes > doubleQuotes * 1.5 ? "single" : doubleQuotes > singleQuotes * 1.5 ? "double" : "mixed";
 
-	// Semicolon detection
 	const statementsWithSemi = (allText.match(/;\s*$/gm) ?? []).length;
 	const statementsTotal = lines.filter(
 		(l) => l.trim().length > 0 && !l.trim().startsWith("//") && !l.trim().startsWith("*"),
 	).length;
 	const semicolons = statementsTotal > 0 ? statementsWithSemi / statementsTotal > 0.3 : true;
 
-	// Trailing comma detection
-	const trailingCommaMatches = (allText.match(/,\s*[\n\r]\s*[}\]]/g) ?? []).length;
-	const closingBrackets = (allText.match(/[}\]]/g) ?? []).length;
+	const trailingCommaMatches = (allText.match(/,\s*[\n\r]\s*[}\]\)]/g) ?? []).length;
+	const closingBrackets = (allText.match(/[}\]\)]/g) ?? []).length;
 	const trailingCommas = closingBrackets > 0 ? trailingCommaMatches / closingBrackets > 0.2 : false;
 
 	return { indent, quotes, semicolons, trailingCommas };
@@ -649,14 +606,20 @@ function detectStyle(filePaths: string[], cwd: string): CodeStyle | null {
 function countCriteria(taskText: string): number {
 	let count = 0;
 
-	// Bullet points / numbered items
+	const section = taskText.match(
+		/(?:acceptance\s+criteria|requirements|tasks?|todo):?\s*\n([\s\S]*?)(?:\n\n|\n(?=[A-Z])|\n(?=##)|$)/i,
+	);
+	if (section) {
+		const bullets = section[1].match(/^\s*(?:[-*•+]|\d+[.)]\s)/gm);
+		if (bullets) return Math.min(bullets.length, 20);
+	}
+
 	const bullets = taskText.match(/^[\s]*[-*•]\s+/gm);
 	if (bullets) count += bullets.length;
 
 	const numbered = taskText.match(/^\s*\d+[.)\]]\s+/gm);
 	if (numbered) count += numbered.length;
 
-	// Imperative sentences
 	const sentences = taskText.split(/[.!]\s+/);
 	for (const s of sentences) {
 		if (/^(add|create|implement|update|modify|change|fix|remove|delete|ensure|make|move|rename|refactor|replace|set|configure|enable|disable|show|hide|display|handle|validate|check|integrate|convert|extract|migrate|wrap|export|import|register|connect|extend|override|support|allow|prevent|include)\b/i.test(s.trim())) {
@@ -664,16 +627,14 @@ function countCriteria(taskText: string): number {
 		}
 	}
 
-	// Conjunction splits in requirements
 	const andMatches = taskText.match(/\b(?:and also|and then|, and\s)/gi);
 	if (andMatches) count += andMatches.length;
 
-	// Deduplicate overlap between bullets and imperatives
 	return Math.max(Math.ceil(count * 0.75), 1);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Git diff awareness — files changed vs base branch
+// Git diff awareness
 // ═══════════════════════════════════════════════════════════════════════════
 
 function getGitChangedFiles(cwd: string): string[] {
@@ -681,72 +642,48 @@ function getGitChangedFiles(cwd: string): string[] {
 		let base = "";
 		try {
 			const branches = execSync("git branch -a 2>/dev/null", {
-				cwd,
-				encoding: "utf-8",
-				timeout: 2000,
+				cwd, encoding: "utf-8", timeout: 2000,
 			});
 			if (branches.includes("origin/main")) base = "origin/main";
 			else if (branches.includes("origin/master")) base = "origin/master";
 			else if (/\bmain\b/.test(branches)) base = "main";
 			else if (/\bmaster\b/.test(branches)) base = "master";
-		} catch {
-			return [];
-		}
+		} catch { return []; }
 
 		if (!base) return [];
 
 		let currentBranch = "";
 		try {
 			currentBranch = execSync("git rev-parse --abbrev-ref HEAD 2>/dev/null", {
-				cwd,
-				encoding: "utf-8",
-				timeout: 2000,
+				cwd, encoding: "utf-8", timeout: 2000,
 			}).trim();
-		} catch {
-			return [];
-		}
+		} catch { return []; }
 
-		// Don't diff base against itself
 		if (currentBranch === base || currentBranch === base.replace("origin/", "")) return [];
 
 		const output = execSync(
 			`git diff --name-only ${base}...HEAD 2>/dev/null || git diff --name-only HEAD~1 2>/dev/null`,
-			{
-				cwd,
-				encoding: "utf-8",
-				timeout: 3000,
-				maxBuffer: 1024 * 32,
-			},
+			{ cwd, encoding: "utf-8", timeout: 3000, maxBuffer: 1024 * 32 },
 		).trim();
 
 		if (output) {
-			return output
-				.split("\n")
+			return output.split("\n")
 				.filter((f) => f.length > 0 && !EXCLUDED_FILE_PATTERNS.test(f))
 				.slice(0, 20);
 		}
-	} catch {
-		// git not available or error
-	}
+	} catch { /* git not available */ }
 	return [];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Main discovery function (all 3 phases combined)
+// Main discovery function (all phases combined)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build the Task Discovery section for the system prompt.
- * Runs pre-agent grep/find against the task repo to identify likely target files,
- * detect code style, and boost results using training-validated patterns.
- *
- * Performance budget: <10s total.
- */
 function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 	if (!taskText || taskText.trim().length < 10) return "";
 
 	const overallStart = Date.now();
-	const BUDGET_MS = 10000; // 10 second total budget
+	const BUDGET_MS = 10000;
 
 	try {
 		// Phase 1: Extract keywords and grep
@@ -755,20 +692,25 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 
 		const grepHits = grepForKeywords(keywords, cwd);
 
-		// Phase 2: Known pattern search + template finding
+		// Phase 1b: Filename grep
+		let filenameHits = new Map<string, Set<string>>();
+		if (Date.now() - overallStart < BUDGET_MS * 0.5) {
+			filenameHits = findByFilename(keywords, cwd);
+		}
+
+		// Phase 2: Known pattern search
 		let patternBonus = new Map<string, number>();
 		if (Date.now() - overallStart < BUDGET_MS * 0.6) {
 			patternBonus = searchKnownPatterns(taskText, cwd);
 		}
 
-		// If no grep hits AND no pattern hits, bail
-		if (grepHits.size === 0 && patternBonus.size === 0) return "";
+		if (grepHits.size === 0 && filenameHits.size === 0 && patternBonus.size === 0) return "";
 
-		// Combined ranking (Phase 1 + Phase 2 + Phase 3)
-		const ranked = rankFiles(grepHits, patternBonus, taskText);
+		// Combined ranking (Phase 1 + 1b + 2 + 3)
+		const ranked = rankFiles(grepHits, filenameHits, patternBonus, taskText);
 		if (ranked.length === 0) return "";
 
-		// Phase 2b: Sibling detection (only if time permits)
+		// Phase 2b: Sibling detection
 		const siblingFiles: string[] = [];
 		if (Date.now() - overallStart < BUDGET_MS * 0.8) {
 			for (const file of ranked.slice(0, 5)) {
@@ -781,7 +723,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 			}
 		}
 
-		// Phase 2c: Template finder (only if time permits)
+		// Phase 2c: Template finder
 		let templateFiles: string[] = [];
 		if (Date.now() - overallStart < BUDGET_MS * 0.9) {
 			templateFiles = findTemplates(taskText, cwd);
@@ -791,77 +733,231 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 		const topPaths = ranked.slice(0, 3).map((f) => f.path);
 		const style = detectStyle(topPaths, cwd);
 
-		// Git diff awareness (Phase 4)
+		// Git diff awareness
 		let gitChangedFiles: string[] = [];
 		if (Date.now() - overallStart < BUDGET_MS * 0.95) {
 			gitChangedFiles = getGitChangedFiles(cwd);
-			// Boost git-changed files in ranking
 			for (const gf of gitChangedFiles) {
 				const existing = ranked.find((r) => r.path === gf);
-				if (existing) {
-					existing.score += 6;
-				}
+				if (existing) existing.score += 6;
 			}
-			// Re-sort after boost
 			ranked.sort((a, b) => b.score - a.score);
 		}
 
-		// Criteria count
+		// Criteria count + concentration + mode selection
 		const criteriaCount = countCriteria(taskText);
+		const concentration = detectConcentration(ranked);
+		const namedFiles = extractNamedFiles(taskText);
+
+		// Check for literal file paths in task
+		const literalPaths: string[] = [];
+		const pathMatches = taskText.match(/(?:^|[\s"'`(\[])((?:\.\.?\/|\/)?(?:[\w.-]+\/)+[\w.-]+\.[a-zA-Z]{1,6})(?=$|[\s"'`)\],:;.])/g) || [];
+		for (const p of pathMatches) {
+			const cleaned = p.trim().replace(/^[\s"'`(\[]/, "").replace(/^\.\//, "");
+			try {
+				const full = resolve(cwd, cleaned);
+				if (existsSync(full) && statSync(full).isFile()) literalPaths.push(cleaned);
+			} catch { /* skip */ }
+		}
+		const backtickPaths = taskText.match(/`([^`]+\.[a-zA-Z0-9]{1,6})`/g) || [];
+		for (const b of backtickPaths) {
+			const inner = b.slice(1, -1).trim().replace(/^\.\//, "");
+			if (literalPaths.includes(inner)) continue;
+			try {
+				const full = resolve(cwd, inner);
+				if (existsSync(full) && statSync(full).isFile()) literalPaths.push(inner);
+			} catch { /* skip */ }
+		}
 
 		// ── Format output ──
-		let output = "## Task Discovery\n\n";
-		output += `This task has approximately ${criteriaCount} acceptance criteria. Budget at least ${Math.max(criteriaCount, 2)} file edits.\n\n`;
-		output += "START HERE — these files almost certainly need edits. Read and edit them before exploring elsewhere:\n";
+		const sections: string[] = [];
 
-		for (const file of ranked.slice(0, 10)) {
-			output += `- ${file.path}\n`;
+		sections.push("## Task Discovery\n");
+		sections.push("DISCOVERY ORDER: (1) Run grep for exact phrases from task first. (2) Prefer files appearing for multiple keywords. (3) Use find/ls only for gaps.\n");
+		sections.push(`This task has approximately ${criteriaCount} acceptance criteria.\n`);
+
+		if (concentration.concentrated && concentration.primaryFile) {
+			sections.push(`KEYWORD CONCENTRATION: \`${concentration.primaryFile}\` matches ${concentration.primaryCount} task keywords — strong primary surface.\n`);
+		}
+
+		// Literal paths first (highest priority)
+		if (literalPaths.length > 0) {
+			sections.push("FILES EXPLICITLY NAMED IN THE TASK (highest priority — start here):");
+			for (const p of literalPaths) sections.push(`- ${p}`);
+			sections.push("");
+		}
+
+		// Filename matches (high priority)
+		const filenameOnly = ranked.filter((f) => f.filenameMatch && !literalPaths.includes(f.path));
+		if (filenameOnly.length > 0) {
+			// Sort alphabetically for presentation
+			const sortedFilename = [...filenameOnly].sort((a, b) => a.path.localeCompare(b.path));
+			sections.push("FILES MATCHING BY NAME (high priority — likely need edits):");
+			for (const f of sortedFilename.slice(0, 8)) {
+				const kwLabel = f.matchedKeywords.slice(0, 3).join(", ");
+				sections.push(`- ${f.path}${kwLabel ? ` (name matches: ${kwLabel})` : ""}`);
+			}
+			sections.push("");
+		}
+
+		// Content-ranked files — cap at 8, sort alphabetically for presentation
+		const shownPaths = new Set([...literalPaths, ...filenameOnly.map((f) => f.path)]);
+		const contentRanked = ranked.filter((f) => !shownPaths.has(f.path));
+		if (contentRanked.length > 0) {
+			// Take top 8 by score, then sort alphabetically
+			const top8 = contentRanked.slice(0, 8);
+			top8.sort((a, b) => a.path.localeCompare(b.path));
+			sections.push("START HERE — these files almost certainly need edits:");
+			for (const file of top8) {
+				sections.push(`- ${file.path}`);
+			}
+			sections.push("");
+		} else if (ranked.length > 0 && literalPaths.length === 0) {
+			const top8 = ranked.slice(0, 8);
+			top8.sort((a, b) => a.path.localeCompare(b.path));
+			sections.push("START HERE — these files almost certainly need edits:");
+			for (const file of top8) {
+				sections.push(`- ${file.path}`);
+			}
+			sections.push("");
 		}
 
 		if (siblingFiles.length > 0) {
-			output += "\nRelated files (siblings):\n";
-			for (const s of siblingFiles.slice(0, 5)) {
-				output += `- ${s}\n`;
-			}
+			sections.push("Related files (siblings):");
+			for (const s of siblingFiles.slice(0, 5)) sections.push(`- ${s}`);
+			sections.push("");
 		}
 
 		if (templateFiles.length > 0) {
-			output += "\nExisting templates to follow:\n";
-			for (const t of templateFiles.slice(0, 3)) {
-				output += `- ${t}\n`;
-			}
+			sections.push("Existing templates to follow:");
+			for (const t of templateFiles.slice(0, 3)) sections.push(`- ${t}`);
+			sections.push("");
 		}
 
 		if (gitChangedFiles.length > 0) {
 			const newGitFiles = gitChangedFiles.filter((gf) => !ranked.some((r) => r.path === gf));
 			if (newGitFiles.length > 0) {
-				output += "\nBranch-changed files (high priority — likely task-relevant):\n";
-				for (const gf of newGitFiles.slice(0, 8)) {
-					output += `- ${gf}\n`;
-				}
+				sections.push("Branch-changed files:");
+				for (const gf of newGitFiles.slice(0, 8)) sections.push(`- ${gf}`);
+				sections.push("");
 			}
 		}
 
-		if (style) {
-			output += "\n## Code Style (MANDATORY — match exactly or score zero)\n";
-			output += `Your edits MUST use: ${style.indent} indent, ${style.quotes} quotes, ${style.semicolons ? "semicolons" : "NO semicolons"}, ${style.trailingCommas ? "trailing commas" : "NO trailing commas"}. Any style deviation = MISMATCH = zero credit per line.\n`;
+		if (namedFiles.length > 0) {
+			sections.push(`Files named in the task text: ${namedFiles.map((f) => `\`${f}\``).join(", ")}.`);
+			sections.push("");
 		}
 
-		return output;
+		if (style) {
+			sections.push("## Code Style (MANDATORY — match exactly or score zero)");
+			sections.push(`Your edits MUST use: ${style.indent} indent, ${style.quotes} quotes, ${style.semicolons ? "semicolons" : "NO semicolons"}, ${style.trailingCommas ? "trailing commas" : "NO trailing commas"}. Any style deviation = MISMATCH = zero credit per line.\n`);
+		}
+
+		return "\n" + sections.join("\n");
 	} catch {
-		// Total failure — graceful degradation
 		return "";
 	}
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Original system prompt builder (with discovery integration)
+// Unified Scoring Preamble — single constant for both code paths
+// Modeled on nexus-v3 structure: concise, completeness-first, with our
+// Mode C concentration + non-empty patch additions.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const TAU_SCORING_PREAMBLE = `# Diff Overlap Optimizer
+
+Your diff is scored against a hidden reference diff for the same task.
+Overlap scoring rewards matching changed lines/ordering and penalizes surplus edits.
+No semantic bonus. No tests in scoring.
+**Empty patches score worst** — treat a non-empty diff as a first-class objective.
+
+## #1 Rule — Completeness wins
+
+Implement **every** acceptance criterion and every sub-part. Missing a feature is far worse than extra lines. "X and also Y" means both. 4+ criteria almost always span 2+ files — stopping early is wrong.
+
+## Hard constraints
+
+- Start with a tool call immediately.
+- No tests, builds, linters, formatters, servers, or git operations.
+- No package installs unless the task explicitly names a dependency.
+- Read a file before editing it.
+- Implement only what is explicitly requested — but implement ALL of it.
+- If instructions conflict: explicit task requirements > hard constraints > smallest edit set.
+- **Non-empty patch:** finish with at least one successful \`edit\` or \`write\`. If blocked, report the blocker.
+- Literality: choose the most boring continuation of nearby code patterns.
+
+## Tie-breaker
+
+When multiple approaches satisfy criteria, fewest changed lines wins. Same line count → most literal match to surrounding code.
+
+## Mode selection
+
+### Mode A (small-task)
+1-2 criteria, one primary file obvious, no multi-surface signal.
+Flow: read → edit → check for required second file → stop.
+
+### Mode B (multi-file)
+Otherwise. Flow: map every criterion to files → breadth-first edit all → do NOT stop until every criterion has an edit.
+
+### Mode C (concentrated)
+KEYWORD CONCENTRATION shows one dominant file. Flow: read that file → apply all edits top-to-bottom → then check other files.
+
+### Boundary rule
+One Mode A condition fails → start A + mandatory sibling check. Switch to B if second file revealed.
+
+## File targeting
+
+- Named files: inspect first, edit when criteria map to them.
+- Priority: (1) acceptance-criteria signal, (2) named file, (3) sibling/wiring signal.
+- Avoid speculative edits with weak evidence. If uncertain, choose highest-probability minimal edit and continue.
+
+## Ordering
+
+- Alphabetical file path order. Within file: top-to-bottom.
+
+## Discovery
+
+- Grep-first: exact task substrings before broad listing.
+- Also search by filename: \`find . -iname "*keyword*"\`.
+- Adaptive cutoff: Mode A = edit after 2 steps; Mode B = after 3; Mode C = after 2.
+
+## Edit discipline
+
+- Match local style exactly (indent, quotes, semicolons, commas, wrapping).
+- Short \`oldText\` anchors from current \`read\`. On failure: **re-read** then retry — never from memory.
+- \`edit\` for existing files; \`write\` only for explicitly requested new files.
+- Do not refactor, clean up, or fix unrelated issues.
+- Exact strings from task → character-for-character in edits.
+
+## Final gate
+
+Walk criterion checklist:
+- Every acceptance criterion has a corresponding edit
+- Compound criteria ("X and also Y") have BOTH parts
+- At least one file successfully edited
+- No required file missed; no unnecessary changes
+
+If any criterion unaddressed → go back and implement before stopping.
+
+## Anti-stall
+
+No edit after discovery + one read → immediately apply highest-probability edit.
+On \`edit\` failure → re-read and retry. Never repeat \`oldText\` from memory.
+An imperfect edit always outscores empty diff.
+
+---
+
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Main system prompt builder
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface BuildSystemPromptOptions {
 	/** Custom system prompt (replaces default). */
 	customPrompt?: string;
-	/** Tools to include in prompt. Default: [read, bash, edit, write] */
+	/** Tools to include in prompt. Default: [read, bash, grep, find, ls, edit, write] */
 	selectedTools?: string[];
 	/** Optional one-line tool snippets keyed by tool name. */
 	toolSnippets?: Record<string, string>;
@@ -896,39 +992,22 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 
 	const appendSection = appendSystemPrompt ? `\n\n${appendSystemPrompt}` : "";
 
+	// Build discovery section from custom prompt (task text) or env var
+	const discoverySource = customPrompt ?? "";
+	const discoverySection = discoverySource ? buildTaskDiscoverySection(discoverySource, resolvedCwd) : "";
+
 	const contextFiles = providedContextFiles ?? [];
 	const skills = providedSkills ?? [];
 
-	// ── Extract task text for discovery ──
-	// Primary: read from PI_PROMPT_FILE / TAU_PROMPT_FILE env var (set by tau validator)
-	// This is the task.txt file inside Docker at /root/task.txt
-	let taskText = "";
-	const promptFile = process.env["PI_PROMPT_FILE"] ?? process.env["TAU_PROMPT_FILE"] ?? "";
-	if (promptFile) {
-		try {
-			taskText = readFileSync(promptFile, "utf8").trim();
-		} catch {
-			// file not readable — fall through to contextFiles
-		}
-	}
-	// Fallback: search contextFiles for a task.txt entry
-	if (!taskText) {
-		for (const { path: filePath, content } of contextFiles) {
-			if (/task\.txt$/i.test(filePath)) {
-				taskText = content;
-				break;
-			}
-		}
-	}
-
 	if (customPrompt) {
-		let prompt = customPrompt;
+		// Custom prompt path: preamble + discovery + task
+		let prompt = TAU_SCORING_PREAMBLE + discoverySection + "\n\n" + customPrompt;
 
 		if (appendSection) {
+			prompt += "\n\n# Appended Section\n\n";
 			prompt += appendSection;
 		}
 
-		// Append project context files
 		if (contextFiles.length > 0) {
 			prompt += "\n\n# Project Context\n\n";
 			prompt += "Project-specific instructions and guidelines:\n\n";
@@ -937,45 +1016,28 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 			}
 		}
 
-		// Append skills section (only if read tool is available)
 		const customPromptHasRead = !selectedTools || selectedTools.includes("read");
 		if (customPromptHasRead && skills.length > 0) {
+			prompt += "\n\n# Skilled Section\n\n";
 			prompt += formatSkillsForPrompt(skills);
 		}
 
-		// Task Discovery (Phase 1+2+3) — inject AFTER context, BEFORE date
-		if (taskText && resolvedCwd) {
-			const discoverySection = buildTaskDiscoverySection(taskText, resolvedCwd);
-			if (discoverySection) {
-				prompt += "\n\n" + discoverySection;
-			}
-		}
-
-		// Add date and working directory last
 		prompt += `\nCurrent date: ${date}`;
 		prompt += `\nCurrent working directory: ${promptCwd}`;
 
 		return prompt;
 	}
 
-	// Get absolute paths to documentation and examples
-	const readmePath = getReadmePath();
-	const docsPath = getDocsPath();
-	const examplesPath = getExamplesPath();
-
-	// Build tools list based on selected tools.
-	const tools = selectedTools || ["read", "bash", "edit", "write"];
+	// Default prompt path (main branch)
+	const tools = selectedTools || ["read", "bash", "grep", "find", "ls", "edit", "write"];
 	const visibleTools = tools.filter((name) => !!toolSnippets?.[name]);
 	const toolsList =
 		visibleTools.length > 0 ? visibleTools.map((name) => `- ${name}: ${toolSnippets![name]}`).join("\n") : "(none)";
 
-	// Build guidelines based on which tools are actually available
 	const guidelinesList: string[] = [];
 	const guidelinesSet = new Set<string>();
 	const addGuideline = (guideline: string): void => {
-		if (guidelinesSet.has(guideline)) {
-			return;
-		}
+		if (guidelinesSet.has(guideline)) return;
 		guidelinesSet.add(guideline);
 		guidelinesList.push(guideline);
 	};
@@ -994,9 +1056,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 
 	for (const guideline of promptGuidelines ?? []) {
 		const normalized = guideline.trim();
-		if (normalized.length > 0) {
-			addGuideline(normalized);
-		}
+		if (normalized.length > 0) addGuideline(normalized);
 	}
 
 	addGuideline("Be concise in your responses");
@@ -1004,51 +1064,59 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 
-	let prompt = `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+	let prompt = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
+Your diff is scored against a hidden reference diff for the same task.
+Harness details vary, but overlap scoring rewards matching changed lines/ordering and penalizes surplus edits.
+No semantic bonus. No tests in scoring.
+**Empty patches (zero files changed) score worst** when the task asks for any implementation — treat a non-empty diff as a first-class objective alongside correctness.
 
-Available tools:
+## Available tools:
 ${toolsList}
 
 In addition to the tools above, you may have access to other custom tools depending on the project.
 
-Guidelines:
+## Guidelines:
 ${guidelines}
+`;
 
-Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):
-- Main documentation: ${readmePath}
-- Additional docs: ${docsPath}
-- Examples: ${examplesPath} (extensions, custom tools, SDK)
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md)
-- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
-- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
+	// Inject unified preamble
+	prompt += TAU_SCORING_PREAMBLE;
 
 	if (appendSection) {
+		prompt += "\n\n## Appended Section\n\n";
 		prompt += appendSection;
 	}
 
-	// Append project context files
+	// Append project context files (includes AGENTS.md)
 	if (contextFiles.length > 0) {
-		prompt += "\n\n# Project Context\n\n";
+		prompt += "\n\n## Project Context\n\n";
 		prompt += "Project-specific instructions and guidelines:\n\n";
 		for (const { path: filePath, content } of contextFiles) {
-			prompt += `## ${filePath}\n\n${content}\n\n`;
+			prompt += `### ${filePath}\n\n${content}\n\n`;
 		}
 	}
 
-	// Append skills section (only if read tool is available)
 	if (hasRead && skills.length > 0) {
+		prompt += "\n\n## Skilled Section\n\n";
 		prompt += formatSkillsForPrompt(skills);
 	}
 
-	// Task Discovery (Phase 1+2+3) — inject AFTER context, BEFORE date
-	if (taskText && resolvedCwd) {
-		const discoverySection = buildTaskDiscoverySection(taskText, resolvedCwd);
-		if (discoverySection) {
-			prompt += "\n\n" + discoverySection;
+	// Inject discovery section from task text env var if available
+	let taskText = "";
+	const promptFile = process.env["PI_PROMPT_FILE"] ?? process.env["TAU_PROMPT_FILE"] ?? "";
+	if (promptFile) {
+		try { taskText = readFileSync(promptFile, "utf8").trim(); } catch { /* skip */ }
+	}
+	if (!taskText) {
+		for (const { path: filePath, content } of contextFiles) {
+			if (/task\.txt$/i.test(filePath)) { taskText = content; break; }
 		}
 	}
+	if (taskText && resolvedCwd) {
+		const mainDiscovery = buildTaskDiscoverySection(taskText, resolvedCwd);
+		if (mainDiscovery) prompt += "\n" + mainDiscovery;
+	}
 
-	// Add date and working directory last
 	prompt += `\nCurrent date: ${date}`;
 	prompt += `\nCurrent working directory: ${promptCwd}`;
 
