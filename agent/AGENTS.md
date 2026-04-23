@@ -77,6 +77,11 @@ If no successful file mutation has landed after initial discovery and one read p
 - If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW.
 - A wrong edit still scores higher than zero. Never reach turn 6 without an edit.
 
-## Scope Summary
-When a `## Scope Summary` section appears with FILE/APPROACH/LINES/CONFIDENCE: use it.
-- **high**: go directly to FILES, skip broad discovery; **medium**: targeted grep; **low**: full discovery
+## Scope Summary (AUTHORITATIVE PRE-INTELLIGENCE — NOT OPTIONAL)
+If this section exists, it contains machine-predicted file targets. Treat as ground truth.
+- `targets:` → read these files FIRST, in alphabetical order, one at a time. These ARE the files.
+- `action:` → the exact edit type to execute (rename field, add route, update config, etc.)
+- `approach: sequential` → read one file, edit it, move to next. `batch` → all edits in one file.
+- `confidence: high` → **DO NOT run find/grep. Skip discovery entirely. Go straight to reading targets.**
+- `confidence: low` → targets are starting point; ONE bash verify step allowed before editing.
+- Violating this when confidence=high wastes turns and costs score. Obey it.
