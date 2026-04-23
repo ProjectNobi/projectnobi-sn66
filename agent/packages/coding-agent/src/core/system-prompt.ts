@@ -365,7 +365,7 @@ If no successful file mutation has landed after initial discovery and one read p
 
 If \`edit\` repeatedly errors:
 - treat that as a **stale or non-matching anchor**, not a signal to stop -- refresh with \`read\` and fix \`oldText\` before any other strategy
-
+`;
 
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 Your diff is scored against a hidden reference diff for the same task.
