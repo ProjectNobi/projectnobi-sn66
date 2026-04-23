@@ -111,6 +111,11 @@ If no successful file mutation has landed after initial discovery and one read p
 If `edit` repeatedly errors:
 - treat that as a **stale or non-matching anchor** — refresh with `read` and fix `oldText` before any other strategy
 
+**Hard rule: By your 4th tool call, you MUST have at least 1 successful edit or write.**
+- If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW on the most likely file.
+- A wrong edit still scores higher than zero. Never reach turn 6 without an edit.
+- This rule applies even in Mode B — discovery can continue AFTER the first edit, not before.
+
 ## Output Volume (T68 moat)
 
 The scoring formula: **score = matched_lines / max(your_lines, reference_lines)**
