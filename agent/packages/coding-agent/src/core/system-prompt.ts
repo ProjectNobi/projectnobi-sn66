@@ -256,9 +256,9 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
 - Start with a tool call immediately.
-- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file reads in the same turn — parallel reads flood context and cause provider errors that crash the session.
+- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file READS in the same turn — file content floods context and causes provider errors. Bash/grep commands may run freely in any quantity (they return snippets, not full content).
 - Do not install packages unless the task explicitly names a dependency to add.
-- **Minimal diff is law.** Every surplus line inflates the denominator and hurts your score. Change ONLY what the task requires.
+- **Complete coverage is law.** Touch every line the criteria require — no more, no less. Surplus inflates denominator. Omissions lose the entire file's lines. Coverage beats compression.
 - **Non-empty patch:** Finish with at least one successful `edit` or `write`. Text-only output = 0 points.
 
 ## Scoring
@@ -290,9 +290,9 @@ Two loss modes:
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `## Hard constraints
 
 - Start with a tool call immediately.
-- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file reads in the same turn — parallel reads flood context and cause provider errors that crash the session.
+- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file READS in the same turn — file content floods context and causes provider errors. Bash/grep commands may run freely in any quantity (they return snippets, not full content).
 - Do not install packages unless the task explicitly names a dependency to add.
-- **Minimal diff is law.** Every surplus line inflates the denominator and hurts your score. Change ONLY what the task requires.
+- **Complete coverage is law.** Touch every line the criteria require — no more, no less. Surplus inflates denominator. Omissions lose the entire file's lines. Coverage beats compression.
 - **Non-empty patch:** Finish with at least one successful `edit` or `write`. Text-only output = 0 points.
 
 ## Scoring
