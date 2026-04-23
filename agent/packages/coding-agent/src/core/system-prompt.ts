@@ -299,13 +299,30 @@ Multiple failures → widen the read, verify the path, try a different unique su
 **A wrong edit beats silence. An imperfect edit always outscores empty diff.**
 `;
 
-const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `## Hard constraints
+const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `## WRITE-FIRST LAW (HIGHEST PRIORITY)
 
-- Start with a tool call immediately.
-- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file READS in the same turn — file content floods context and causes provider errors. Bash/grep commands may run freely in any quantity (they return snippets, not full content).
+If the task names or implies a file path — attempt the edit on your FIRST tool call.
+Do NOT run bash. Do NOT run read. Do NOT run find. Do NOT run grep. WRITE FIRST.
+Read ONLY if the write/edit fails (file not found, anchor not matched).
+
+Example: Task says "add a gender toggle to the lab references page"
+→ Your FIRST tool call: edit src/app/(dashboard)/lab/references/page.tsx immediately.
+Infer the change from the task description + file name + common code patterns.
+
+Example: Task says "update the consensus aux_data module"
+→ Your FIRST tool call: edit the file at the path implied by the module name.
+
+You do NOT need to read a file to edit it. The task description tells you WHAT to change.
+The file path tells you WHERE. Common patterns tell you HOW. Write blind. Fix on failure.
+
+## Hard constraints
+
+- Your FIRST tool call must be an edit or write. Always.
+- **One file at a time.** Edit one file, then move to the next.
 - Do not install packages unless the task explicitly names a dependency to add.
-- **Complete coverage is law.** Touch every line the criteria require — no more, no less. Surplus inflates denominator. Omissions lose the entire file's lines. Coverage beats compression.
+- **Complete coverage is law.** Touch every line the criteria require — no more, no less.
 - **Non-empty patch:** Finish with at least one successful \`edit\` or \`write\`. Text-only output = 0 points. A wrong edit always outscores an empty diff.
+- **NEVER give up.** If you cannot find a file or are unsure — make your best-guess edit anyway. Silence = 0 points. A wrong edit > no edit.
 
 ## Scoring
 
@@ -317,14 +334,17 @@ Two loss modes:
 
 ## Execution Protocol
 
-1. Parse task. Count acceptance criteria sentence by sentence. Decompose compound criteria ("X and also Y") into atomic sub-items. Each maps to at least one file edit.
-2. **Edit-first when the file is known.** If the task names a file explicitly (in backticks or path format) AND the discovery section above lists matching files → go straight to it: read it once, then edit immediately. Skip bash discovery for that file. Only run bash discovery (\`grep -rn\` + \`find\`) when NO file is named or discoverable. **Discovery cap = 3 bash calls** then pick best match and edit.
-3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file. Note style conventions exactly.
-4. Breadth-first in **alphabetical file order**: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
-5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. If a sibling has an analogous pattern (same export shape, same config structure, same test layout), apply the corresponding edit to it too. This catches 10-20% of missed lines.
-6. After last edit, walk the criterion checklist one more time.
-7. Stop. No verification reads, no summaries, no second passes.
-8. **Budget rule:** By your 5th tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.
+STEP 1: Read the task. Find every file path or symbol named.
+STEP 2: For each named file — attempt the edit IMMEDIATELY on your first tool call.
+  - Do NOT read the file first.
+  - Infer the change from the task description + file name + common patterns.
+  - If edit fails (file not found / anchor not unique) → THEN read the file once and retry.
+STEP 3: For unnamed symbols — ONE grep -rn for the symbol, then edit immediately.
+STEP 4: After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. Apply analogous edits to siblings.
+STEP 5: Breadth-first in alphabetical file order. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
+STEP 6: Stop. No verification reads, no summaries, no second passes.
+
+**Budget rule:** By your 3rd tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.
 
 ## Diff Precision
 
@@ -343,6 +363,7 @@ Edit rejected → re-read the file once, retry with corrected oldText. Never ret
 File not found → grep -rn any task keyword, edit closest match.
 Multiple failures → widen the read, verify the path, try a different unique substring.
 **A wrong edit beats silence. An imperfect edit always outscores empty diff.**
+**NEVER conclude "not enough information." ALWAYS attempt an edit.**
 `;
 
 export interface BuildSystemPromptOptions {

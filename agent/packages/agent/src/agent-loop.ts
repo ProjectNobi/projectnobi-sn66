@@ -184,7 +184,8 @@ function parseExpectedCriteriaCount(systemPrompt: string): number {
 }
 
 function trackFileEdit(toolName: string, args: Record<string, any>, editedFiles: Set<string>): void {
-	if (toolName === "edit" || toolName === "write") {
+	const editToolNames = new Set(["edit", "write", "str_replace_editor", "str_replace_based_edit_tool"]);
+	if (editToolNames.has(toolName)) {
 		const filePath = args?.path || args?.file || args?.filePath;
 		if (typeof filePath === "string" && filePath.length > 0) {
 			editedFiles.add(filePath.replace(/^\.\//, ""));
@@ -215,14 +216,15 @@ async function runLoop(
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
 
-	// --- King's 3 mechanisms: tracking state ---
+	// --- Tracking state ---
 	const editedFiles = new Set<string>();
 	let hasProducedEdit = false;
-	let zeroOutputRescueFired = false;
-	let earlyRescueFired = false;
 	let coverageNudgeFired = false;
 	let criteriaGuardrailFired = false;
 	let totalToolCalls = 0;
+	let totalTurns = 0;
+	let forcedWriteAttempts = 0;
+	const MAX_FORCED_WRITE_ATTEMPTS = 2;
 	const expectedFiles = parseExpectedFiles(currentContext.systemPrompt);
 	const expectedCriteriaCount = parseExpectedCriteriaCount(currentContext.systemPrompt);
 
@@ -284,17 +286,22 @@ async function runLoop(
 					newMessages.push(result);
 				}
 
-				// --- Mechanism 0: Early rescue (force edit BEFORE context overflow) ---
-				if (!hasProducedEdit && !earlyRescueFired && totalToolCalls >= 5) {
-					earlyRescueFired = true;
-					const earlyRescue = buildInjectionMessage(
-						"URGENT: You have used 5+ tool calls with ZERO edits/writes. Context is running out. You MUST make an edit or write on your VERY NEXT tool call. Pick the most relevant file you have read and apply the change NOW. Do NOT run any more bash or read commands first.",
-					);
-					pendingMessages.push(earlyRescue);
-				}
 			}
 
+			totalTurns++;
+
 			await emit({ type: "turn_end", message, toolResults });
+
+			// --- Minimum 3-turn guard: prevent premature exit ---
+			if (!hasMoreToolCalls && !hasProducedEdit && totalTurns < 3) {
+				const forceMsg = buildInjectionMessage(
+					"STOP. You have made ZERO edits and are trying to quit too early. " +
+					"You MUST use the edit or write tool NOW. Pick the most relevant file from the task " +
+					"and make the required change. A wrong edit scores higher than no edit. DO IT NOW.",
+				);
+				pendingMessages.push(forceMsg);
+				hasMoreToolCalls = true;
+			}
 
 			// --- Mechanism 2: Coverage nudge (after edits, check unedited candidate files) ---
 			if (hasProducedEdit && !coverageNudgeFired && expectedFiles.length > 0) {
@@ -327,11 +334,15 @@ async function runLoop(
 			pendingMessages.push(...((await config.getSteeringMessages?.()) || []));
 		}
 
-		// --- Mechanism 1: Zero-output rescue (model stopped with 0 file changes) ---
-		if (!hasProducedEdit && !zeroOutputRescueFired) {
-			zeroOutputRescueFired = true;
+		// --- Forced-write rescue (model stopped with 0 edits, totalToolCalls < 8) ---
+		if (!hasProducedEdit && forcedWriteAttempts < MAX_FORCED_WRITE_ATTEMPTS && totalToolCalls < 8) {
+			forcedWriteAttempts++;
 			const rescue = buildInjectionMessage(
-				"You are about to finish with ZERO file changes. This guarantees a loss — empty patches score worst. You MUST apply at least one edit or write now. Go back to the task, pick the highest-priority file, and make the required change.",
+				`FORCED WRITE MODE (attempt ${forcedWriteAttempts}/${MAX_FORCED_WRITE_ATTEMPTS}): ` +
+				"You MUST use the edit or write tool on your VERY NEXT tool call. " +
+				"Pick the highest-priority file from the task and apply the change NOW. " +
+				"Do NOT read, do NOT bash, do NOT grep. EDIT NOW. " +
+				"An incorrect edit scores higher than zero edits. WRITE SOMETHING.",
 			);
 			pendingMessages = [rescue];
 			continue;
