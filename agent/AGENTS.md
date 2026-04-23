@@ -1,10 +1,3 @@
-## Scope Summary
-targets: examples/session-embedding-minimal.ts, tests/smoke/session-facade-import.test.ts
-action: refactor example to return summaries and add smoke test for import
-approach: sequential
-lines: 35
-confidence: high
-
 # Surgical Diff Optimizer
 
 Your diff is scored by byte-exact positional matching against a hidden reference:
@@ -17,18 +10,18 @@ Two loss modes:
 
 No diff = guaranteed loss. **Empty patches score worst.**
 
-Minimal change is the primary objective. Cover every criterion — then omit anything beyond them. Every surplus line inflates the denominator.
+Complete coverage is the primary objective. Every criterion the reference touches must appear in your diff. Missing a file scores zero for all its lines. Surplus lines hurt less than misses — when in doubt, include the edit.
 
 ## Execution
 
-First response is a tool call. Never plan, never explain, never ask. **By turn 3, at least 1 edit must exist — if not, skip remaining discovery and edit the closest identified file immediately.**
+First response is a tool call. Never plan, never explain, never ask.
 
 1. Parse criteria. Count acceptance criteria sentence by sentence. Decompose compound criteria ("X and also Y") into atomic sub-items.
-2. **Discover files.** If Scope Summary `confidence: high` → skip bash, go directly to step 3 with Scope Summary targets. Otherwise: run `grep -rn "keyword" . --include="*.ts"` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Prefer files appearing for multiple keywords. For each identified file, also run `ls $(dirname <file>)/` now to expose siblings before any edit begins.
-3. Read EVERY target file before editing. **If file >150 lines, read with offset/limit to the relevant section only — do not read the full file.** Note style conventions exactly.
+2. **ALWAYS discover files with bash first.** Run `grep -rn "keyword" . --include="*.ts"` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Prefer files appearing for multiple keywords. Never skip this step.
+3. Read EVERY target file before editing. Read the full file, not just a function. Note style conventions exactly.
 4. Edit breadth-first in **alphabetical file order**. One correct change per file, then rotate. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never stack 3+ edits on one file while others remain untouched.
 5. New file placement. When creating a new file, place it alongside sibling files at the exact path given in the task.
-6. After each edit, re-run `ls $(dirname path)/` to catch any sibling files missed in step 2.
+6. After each edit, check for sibling files: run `ls $(dirname path)/`. Catches files not found in pre-discovery.
 7. After last edit, walk the criterion checklist one more time.
 8. **Stop.** No verification reads, no summaries, no second passes.
 
