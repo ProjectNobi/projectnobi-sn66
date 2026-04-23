@@ -272,12 +272,12 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria — each maps to at least one file edit.
-2. **ALWAYS discover with bash first.** Run \`grep -rn "KEYWORD" . --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" 2>/dev/null | grep -v node_modules | head -20\` for each key term in the task. If grep returns empty → fallback: run \`find . -type f | grep -v node_modules | grep -v ".git" | grep -v "dist/" | head -40\` to list all files, then pick the most relevant. **Never skip discovery and never treat empty grep as "task is done" — empty means wrong keyword, try synonyms.**
+2. ALWAYS discover with bash first: \`find\` + \`grep\` before any edits. **Discovery cap = 4 bash calls.** If target not found after 4 bash calls → run \`find . -type f | head -60\` once, pick the most plausible file, and edit it. No more searching after cap.
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file.
-- **Anti-stall:** If you have completed discovery + read 1 file + still no edit → make the highest-confidence edit IMMEDIATELY. Do not loop back to discovery. A wrong edit recovers. An empty diff does not.
 4. Breadth-first: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes.
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change.
 6. Stop. No verification reads, no summaries, no second passes.
+7. **Budget rule:** By your 8th tool call, you MUST have made at least 1 edit/write. If not — skip remaining discovery and make your best-guess edit NOW.
 
 ## Diff Precision
 
@@ -307,12 +307,12 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria — each maps to at least one file edit.
-2. **ALWAYS discover with bash first.** Run \`grep -rn "KEYWORD" . --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" 2>/dev/null | grep -v node_modules | head -20\` for each key term in the task. If grep returns empty → fallback: run \`find . -type f | grep -v node_modules | grep -v ".git" | grep -v "dist/" | head -40\` to list all files, then pick the most relevant. **Never skip discovery and never treat empty grep as "task is done" — empty means wrong keyword, try synonyms.**
+2. ALWAYS discover with bash first: \`find\` + \`grep\` before any edits. **Discovery cap = 4 bash calls.** If target not found after 4 bash calls → run \`find . -type f | head -60\` once, pick the most plausible file, and edit it. No more searching after cap.
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file.
-- **Anti-stall:** If you have completed discovery + read 1 file + still no edit → make the highest-confidence edit IMMEDIATELY. Do not loop back to discovery. A wrong edit recovers. An empty diff does not.
 4. Breadth-first: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes.
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change.
 6. Stop. No verification reads, no summaries, no second passes.
+7. **Budget rule:** By your 8th tool call, you MUST have made at least 1 edit/write. If not — skip remaining discovery and make your best-guess edit NOW.
 
 ## Diff Precision
 
