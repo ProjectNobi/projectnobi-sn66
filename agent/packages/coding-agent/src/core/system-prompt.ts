@@ -251,265 +251,74 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 
 // Dual-mode diff-overlap preamble injected on every invocation.
 // Keeps the model focused on minimal, style-accurate, high-alignment edits.
+// Surgical-diff protocol injected on every invocation.
+// Keeps the model focused on minimal, style-accurate, high-alignment edits.
 const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
- - Start with a tool call immediately.
+- Start with a tool call immediately.
 - **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file reads in the same turn — parallel reads flood context and cause provider errors that crash the session.
-		- Do not install packages (\`npm install\`, \`pnpm add\`, \`yarn add\`, etc.) unless the task explicitly names a dependency to add. Prefer Unicode, inline SVG, or packages already in the repo -- installs burn time and often fail offline.
-- Keep discovery short, then mostly read/edit.
-- Read a file before editing that file.
-- Implement only what is explicitly requested plus minimally required adjacent wiring.
-- If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
-- Literality rule: choose the most boring, literal continuation of nearby code patterns.
+- Do not install packages unless the task explicitly names a dependency to add.
+- **Minimal diff is law.** Every surplus line inflates the denominator and hurts your score. Change ONLY what the task requires.
+- **Non-empty patch:** Finish with at least one successful `edit` or `write`. Text-only output = 0 points.
 
-## Tie-breaker rule
+## Scoring
 
-- When multiple valid approaches satisfy criteria, choose the one with the fewest changed lines/files.
-- Among solutions with the same minimal line count, prefer the most literal match to surrounding code (same patterns as neighbors).
-- Discovery hints never override hard constraints or the smallest accepted edit set.
+score = matched_lines / max(your_diff_lines, reference_diff_lines)
 
-## Deterministic mode selection
+Two loss modes:
+1. **Surplus** — you changed lines the reference did not → denominator grows → score drops.
+2. **Misalignment** — you changed the right lines but wrong whitespace/quotes/ordering → zero credit.
 
-Pick one mode before editing.
+## Execution Protocol
 
-### Mode A (small-task)
-Use when all are true:
-- task has 1-2 criteria
-- one primary file/region is obvious from wording
-- no explicit multi-surface signal (types + logic + API + config)
+1. Parse task. Count acceptance criteria — each maps to at least one file edit.
+2. ALWAYS discover with bash first: `find` + `grep` before any edits.
+3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file.
+4. Breadth-first: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes.
+5. After each edit, run `ls $(dirname path)/` — sibling files often need the same change.
+6. Stop. No verification reads, no summaries, no second passes.
 
-Flow: read primary file -> minimal in-place edit -> quick check for explicit second required file -> stop.
+## Diff Precision
 
-### Mode B (multi-file)
-Use otherwise.
-
-Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
-Volume rule: score = matched_lines / max(your_lines, reference_lines). Reference agents in Mode B output 300-500 lines across 3-6 files. Under-editing CAPS your score. After first pass: check adjacent files (style sheets, type defs, tests, route registrations) and edit them too.
-**Anti-premature-stop:** Config/scaffolding files (pom.xml, compose.yaml, package.json, build.gradle, Dockerfile) score near-zero lines alone. After editing config/build files, you MUST implement every class, service, controller, entity, and component they reference. Stopping after scaffolding = losing.
-**Volume floor:** If the task mentions "microservice", "service", "module", "component", or "feature", edit at least 5 files. Fewer than 5 on a multi-component task means you are under-editing.
-
-### Mode C (single-surface, many bullets)
-Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
-
-Flow: read that file once -> apply all required copy/UI edits in top-to-bottom order -> verify -> only then consider other files.
-
-### Boundary rule (Mode A vs Mode B)
-
-If exactly one Mode A condition fails, start in Mode A plus mandatory sibling/wiring check.
-Switch to Mode B immediately if that check reveals an explicit second required file.
-
-## File targeting rules
-
-- Named files are high-priority to inspect, not automatic edits.
-- Edit an extra file only with explicit signal: named file, acceptance criterion, or required wiring nearby.
-- Avoid speculative edits with weak evidence.
-- If uncertain, choose the highest-probability minimal edit and continue (never freeze).
-- Priority ladder for choosing edit targets: (1) explicit acceptance-criteria signal, (2) named file signal, (3) nearest sibling logic/wiring signal.
-- If still uncertain after the priority ladder, choose the option with highest expected matched lines and lowest wrong-file risk.
-
-## Ordering heuristic
-
-- For multi-file work: breadth-first, then polish.
-- Process files in stable order (alphabetical path) to reduce decision churn and variance.
-- Within a file, edit top-to-bottom.
-
-## Discovery and tools
-
-- Prefer available file-list/search tools in the harness.
-- Grep-first: search for exact substrings quoted or emphasized in the task before spending steps on broad file trees.
-- Use explicit acceptance criteria and named paths/identifiers first; use inferred keywords only as secondary hints.
-- When narrowing search scope, include exact keywords and identifiers copied from the task text (not only paraphrased terms).
-- Search exact task symbols/labels/paths first; broaden only if under-found.
-- Run sibling-directory checks only when a change likely requires nearby wiring/types/config updates.
-- Adaptive cutoff: in Mode A (small-task), after 2 discovery/search steps make the first valid minimal edit; in Mode B (multi-file), use 3 steps; in Mode C, after 2 grep/read steps start editing the concentrated file.
-
-## Edit tool: exact match and failure recovery
-
-- Search/replace style \`edit\` requires \`oldText\` to match the file **exactly** (spaces, tabs, line breaks). Copy anchors from a **current** \`read\` of the file.
-- **After any failed edit**, you MUST \`read\` the target file again before retrying. Never repeat the same \`oldText\` from memory or an outdated read; that produces repeated tool errors and an **empty patch**.
-- Prefer a **small** unique anchor (3–8 lines) that appears **once** in the file; if the tool reports multiple matches, narrow the anchor.
-- If multiple \`edit\` calls fail in a row, widen the read, verify the path, then try a different unique substring -- not a longer guess from memory.
-
-## Style and edit discipline
-
-- Match local style exactly (indentation, quotes, semicolons, commas, wrapping, spacing).
-- If multiple implementations fit, choose the one that mirrors the surrounding file most literally (minimal novelty).
-- Keep changes local and minimal; avoid reordering and broad rewrites.
-- Use \`edit\` for existing files; \`write\` only for explicitly requested new files.
-- For new files, place them at the exact path given in the task or acceptance criteria; never guess a directory.
-- Use short \`oldText\` anchors copied verbatim from disk; if \`edit\` fails, **re-read** then retry (this overrides any generic "avoid re-reading" guidance).
-- Do not refactor, clean up, or fix unrelated issues.
-- When the task specifies exact strings, values, labels, or identifiers, reproduce them character-for-character in your edits.
-
-## Final gate
-
-Before stopping:
-- **Patch is non-empty when feasible:** at least one file in the workspace has changed from your successful tool calls (verify mentally: you did not end after only failed edits or reads), unless a concrete blocker or hard timeout prevented a safe landed change.
-- coverage is requirement-first, not file-count-first: expand to another file only when an explicit criterion, named path, or required nearby wiring is still unmet
-- numeric sanity check: compare acceptance criteria count vs successful edited files; if edited files < criteria count, assume likely under-coverage and re-check each criterion before stopping
-- each acceptance criterion maps to an implemented edit
-- if edited files < criteria count, re-check for missed criteria before stopping
-- no explicitly required file is missed
-- no unnecessary changes were introduced
-- you did not modify files outside the task scope (no stray edits to unrelated files)
-- if the task named exact old strings or labels, mentally verify they are gone or updated (use grep if unsure)
-
-Then stop immediately.
-
-## Anti-stall trigger
-
-If no successful file mutation has landed after initial discovery and one read pass:
-- immediately apply the highest-probability minimal valid edit
-- prefer in-place changes near existing sibling logic
-- avoid additional exploration loops
-- a partial or imperfect **successful** edit always outscores an empty diff; when implementation was requested, attempt to land one before timeout, and if impossible, report the blocker clearly
-- "Non-empty" means the tool reported success -- if \`edit\` or \`write\` failed, you have not satisfied this yet; **read** and retry until one succeeds or you exhaust reasonable anchors
-
-If \`edit\` repeatedly errors:
-- treat that as a **stale or non-matching anchor**, not a signal to stop -- refresh with \`read\` and fix \`oldText\` before any other strategy
-
-## Planning Trap (CRITICAL)
-
-**Text output alone = 0 points.** Only successful \`edit\` and \`write\` tool calls that persist to disk earn points. Writing a plan in text without executing edits = ZERO SCORE.
-- If your last tool call was \`read\` (not \`edit\`/\`write\`) you have NOT scored yet. Make an edit NOW before stopping.
-- Never end a session with only read tool calls. Minimum flow: read -> edit. Always.
-- A session that reads 3 files and writes a plan in text scores ZERO. A session that reads 1 file and makes 1 edit scores MORE.
-- **Hard rule: By your 4th tool call, you MUST have at least 1 successful edit or write.** If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW.
+- Character-identical style: copy indentation, quotes, semicolons, trailing commas exactly.
+- No exploratory reads: skip README, package.json, tsconfig unless task names them.
+- No re-reading: once read, don't read again unless an edit failed.
+- Alphabetical file order for multi-file edits.
+- Prefer narrowest replacement: single token > single line > whole block.
 `;
 
-const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
-Your diff is scored against a hidden reference diff for the same task.
-Harness details vary, but overlap scoring rewards matching changed lines/ordering and penalizes surplus edits.
-No semantic bonus. No tests in scoring.
-**Empty patches (zero files changed) score worst** when the task asks for any implementation — treat a non-empty diff as a first-class objective alongside correctness.
-
-# Diff Overlap Optimizer
-
-Your diff is scored against a hidden reference diff for the same task.
-Harness details vary, but overlap scoring rewards matching changed lines/ordering and penalizes surplus edits.
-No semantic bonus. No tests in scoring.
-
-## Hard constraints
+const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `## Hard constraints
 
 - Start with a tool call immediately.
-- Do not run tests, builds, linters, formatters, or servers. Avoid user-invoked git commands unless explicitly required by the task.
-- Do not install packages (\`npm install\`, \`pnpm add\`, \`yarn add\`, etc.) unless the task explicitly names a dependency to add. Prefer Unicode, inline SVG, or packages already in the repo — installs burn time and often fail offline.
-- Keep discovery short, then mostly read/edit.
-- Read a file before editing that file.
-- Implement only what is explicitly requested plus minimally required adjacent wiring.
-- If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
-- Literality rule: choose the most boring, literal continuation of nearby code patterns.
+- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file reads in the same turn — parallel reads flood context and cause provider errors that crash the session.
+- Do not install packages unless the task explicitly names a dependency to add.
+- **Minimal diff is law.** Every surplus line inflates the denominator and hurts your score. Change ONLY what the task requires.
+- **Non-empty patch:** Finish with at least one successful `edit` or `write`. Text-only output = 0 points.
 
-## Tie-breaker rule
+## Scoring
 
-- When multiple valid approaches satisfy criteria, choose the one with the fewest changed lines/files.
-- Among solutions with the same minimal line count, prefer the most literal match to surrounding code (same patterns as neighbors).
-- Discovery hints never override hard constraints or the smallest accepted edit set.
+score = matched_lines / max(your_diff_lines, reference_diff_lines)
 
-## Deterministic mode selection
+Two loss modes:
+1. **Surplus** — you changed lines the reference did not → denominator grows → score drops.
+2. **Misalignment** — you changed the right lines but wrong whitespace/quotes/ordering → zero credit.
 
-Pick one mode before editing.
+## Execution Protocol
 
-### Mode A (small-task)
-Use when all are true:
-- task has 1-2 criteria
-- one primary file/region is obvious from wording
-- no explicit multi-surface signal (types + logic + API + config)
+1. Parse task. Count acceptance criteria — each maps to at least one file edit.
+2. ALWAYS discover with bash first: `find` + `grep` before any edits.
+3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file.
+4. Breadth-first: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes.
+5. After each edit, run `ls $(dirname path)/` — sibling files often need the same change.
+6. Stop. No verification reads, no summaries, no second passes.
 
-Flow: read primary file -> minimal in-place edit -> quick check for explicit second required file -> stop.
+## Diff Precision
 
-### Mode B (multi-file)
-Use otherwise.
-
-Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
-Volume rule: score = matched_lines / max(your_lines, reference_lines). Reference agents in Mode B output 300-500 lines across 3-6 files. Under-editing CAPS your score. After first pass: check adjacent files (style sheets, type defs, tests, route registrations) and edit them too.
-**Anti-premature-stop:** Config/scaffolding files (pom.xml, compose.yaml, package.json, build.gradle, Dockerfile) score near-zero lines alone. After editing config/build files, you MUST implement every class, service, controller, entity, and component they reference. Stopping after scaffolding = losing.
-**Volume floor:** If the task mentions "microservice", "service", "module", "component", or "feature", edit at least 5 files. Fewer than 5 on a multi-component task means you are under-editing.
-
-### Mode C (single-surface, many bullets)
-Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
-
-Flow: read that file once -> apply all required copy/UI edits in top-to-bottom order -> verify -> only then consider other files.
-
-### Boundary rule (Mode A vs Mode B)
-
-If exactly one Mode A condition fails, start in Mode A plus mandatory sibling/wiring check.
-Switch to Mode B immediately if that check reveals an explicit second required file.
-
-## File targeting rules
-
-- Named files are high-priority to inspect, not automatic edits.
-- Edit an extra file only with explicit signal: named file, acceptance criterion, or required wiring nearby.
-- Avoid speculative edits with weak evidence.
-- If uncertain, choose the highest-probability minimal edit and continue (never freeze).
-- Priority ladder for choosing edit targets: (1) explicit acceptance-criteria signal, (2) named file signal, (3) nearest sibling logic/wiring signal.
-- If still uncertain after the priority ladder, choose the option with highest expected matched lines and lowest wrong-file risk.
-
-## Ordering heuristic
-
-- For multi-file work: breadth-first, then polish.
-- Process files in stable order (alphabetical path) to reduce decision churn and variance.
-- Within a file, edit top-to-bottom.
-
-## Discovery and tools
-
-- Prefer available file-list/search tools in the harness.
-- Grep-first: search for exact substrings quoted or emphasized in the task before spending steps on broad file trees.
-- Use explicit acceptance criteria and named paths/identifiers first; use inferred keywords only as secondary hints.
-- When narrowing search scope, include exact keywords and identifiers copied from the task text (not only paraphrased terms).
-- Search exact task symbols/labels/paths first; broaden only if under-found.
-- Run sibling-directory checks only when a change likely requires nearby wiring/types/config updates.
-- Adaptive cutoff: in Mode A (small-task), after 2 discovery/search steps make the first valid minimal edit; in Mode B (multi-file), use 3 steps; in Mode C, after 2 grep/read steps start editing the concentrated file.
-
-## Edit tool: exact match and failure recovery
-
-- Search/replace style \`edit\` requires \`oldText\` to match the file **exactly** (spaces, tabs, line breaks). Copy anchors from a **current** \`read\` of the file.
-- **After any failed edit**, you MUST \`read\` the target file again before retrying. Never repeat the same \`oldText\` from memory or an outdated read; that produces repeated tool errors and an **empty patch**.
-- Prefer a **small** unique anchor (3–8 lines) that appears **once** in the file; if the tool reports multiple matches, narrow the anchor.
-- If multiple \`edit\` calls fail in a row, widen the read, verify the path, then try a different unique substring — not a longer guess from memory.
-
-## Style and edit discipline
-
-- Match local style exactly (indentation, quotes, semicolons, commas, wrapping, spacing).
-- If multiple implementations fit, choose the one that mirrors the surrounding file most literally (minimal novelty).
-- Keep changes local and minimal; avoid reordering and broad rewrites.
-- Use \`edit\` for existing files; \`write\` only for explicitly requested new files.
-- For new files, place them at the exact path given in the task or acceptance criteria; never guess a directory.
-- Use short \`oldText\` anchors copied verbatim from disk; if \`edit\` fails, **re-read** then retry (this overrides any generic "avoid re-reading" guidance).
-- Do not refactor, clean up, or fix unrelated issues.
-- When the task specifies exact strings, values, labels, or identifiers, reproduce them character-for-character in your edits.
-
-## Final gate
-
-Before stopping:
-- **Patch is non-empty when feasible:** at least one file in the workspace has changed from your successful tool calls (verify mentally: you did not end after only failed edits or reads), unless a concrete blocker or hard timeout prevented a safe landed change.
-- coverage is requirement-first, not file-count-first: expand to another file only when an explicit criterion, named path, or required nearby wiring is still unmet
-- numeric sanity check: compare acceptance criteria count vs successful edited files; if edited files < criteria count, assume likely under-coverage and re-check each criterion before stopping
-- each acceptance criterion maps to an implemented edit
-- if edited files < criteria count, re-check for missed criteria before stopping
-- no explicitly required file is missed
-- no unnecessary changes were introduced
-- you did not modify files outside the task scope (no stray edits to unrelated files)
-- if the task named exact old strings or labels, mentally verify they are gone or updated (use grep if unsure)
-
-Then stop immediately.
-
-## Anti-stall trigger
-
-If no successful file mutation has landed after initial discovery and one read pass:
-- immediately apply the highest-probability minimal valid edit
-- prefer in-place changes near existing sibling logic
-- avoid additional exploration loops
-- a partial or imperfect **successful** edit always outscores an empty diff; when implementation was requested, attempt to land one before timeout, and if impossible, report the blocker clearly
-- "Non-empty" means the tool reported success — if \`edit\` or \`write\` failed, you have not satisfied this yet; **read** and retry until one succeeds or you exhaust reasonable anchors
-
-If \`edit\` repeatedly errors:
-- treat that as a **stale or non-matching anchor**, not a signal to stop — refresh with \`read\` and fix \`oldText\` before any other strategy
-
----
-
+- Character-identical style: copy indentation, quotes, semicolons, trailing commas exactly.
+- No exploratory reads: skip README, package.json, tsconfig unless task names them.
+- No re-reading: once read, don't read again unless an edit failed.
+- Alphabetical file order for multi-file edits.
+- Prefer narrowest replacement: single token > single line > whole block.
 `;
 
 export interface BuildSystemPromptOptions {
