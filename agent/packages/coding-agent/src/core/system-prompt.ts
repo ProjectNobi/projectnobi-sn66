@@ -301,19 +301,18 @@ Multiple failures → widen the read, verify the path, try a different unique su
 
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `## WRITE-FIRST LAW (HIGHEST PRIORITY)
 
-If the task names or implies a file path — attempt the edit on your FIRST tool call.
-Do NOT run bash. Do NOT run read. Do NOT run find. Do NOT run grep. WRITE FIRST.
-Read ONLY if the write/edit fails (file not found, anchor not matched).
+If the task names a clear file path — attempt the edit on your FIRST tool call.
+Do NOT run bash. Do NOT run read. WRITE FIRST.
 
-Example: Task says "add a gender toggle to the lab references page"
-→ Your FIRST tool call: edit src/app/(dashboard)/lab/references/page.tsx immediately.
-Infer the change from the task description + file name + common code patterns.
+If your first edit FAILS (file not found, ENOENT):
+→ IMMEDIATELY run ONE bash: \`grep -rn "ClassName\|symbol_from_task" . --include="*.php" --include="*.ts" --include="*.py" -l | head -5\`
+→ Edit the FIRST result immediately. Do not read it. Edit blind.
+→ If that edit also fails → read the file once → edit immediately.
+NEVER enter a text-reasoning loop after edit failures. Action → Action → Action.
 
-Example: Task says "update the consensus aux_data module"
-→ Your FIRST tool call: edit the file at the path implied by the module name.
-
-You do NOT need to read a file to edit it. The task description tells you WHAT to change.
-The file path tells you WHERE. Common patterns tell you HOW. Write blind. Fix on failure.
+Example: Task says "update ConsoleKernel"
+→ FIRST tool call: edit includes/classes/Console/ConsoleKernel.php (infer from name)
+→ If ENOENT: \`grep -rn "ConsoleKernel" . -l | head -1\` → edit that path immediately
 
 ## READ-EDIT INTERLEAVE LAW (SECOND HIGHEST PRIORITY)
 
@@ -333,6 +332,7 @@ After a failed edit + re-read: the VERY NEXT tool call MUST be edit with a DIFFE
 - **NEVER give up.** If you cannot find a file or are unsure — make your best-guess edit anyway. Silence = 0 points. A wrong edit > no edit.
 - **NEVER write code in your text response.** ALL code changes MUST be made via edit or write tool calls. Putting code in text instead of tool calls = 0 points.
 - **Target minimum 300 lines of changes per task.** If you finish with <200 lines, you are leaving wins on the table. Go back and add the next most-relevant change.
+- **Breadth-first law:** Maximum 2 successful edits per file. After 2 edits on one file → move to next file. Touch 4+ files before perfecting any one file.
 
 ## Scoring
 
@@ -353,6 +353,11 @@ STEP 3: For unnamed symbols — ONE grep -rn for the symbol, then edit immediate
 STEP 4: After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. Apply analogous edits to siblings.
 STEP 5: Breadth-first in alphabetical file order. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
 STEP 5.5: After every successful edit, IMMEDIATELY check: are there other acceptance criteria not yet covered? If yes → move to the next file and edit it. Do NOT stop after the first file. Cover ALL criteria breadth-first.
+STEP 5.6: After EVERY successful edit — run \`ls $(dirname <last_edited_file>)/\` immediately.
+  Then grep the edited symbol in other directories: \`grep -rn "SymbolYouJustEdited" . --include="*.ts" --include="*.php" -l | grep -v <just_edited_file>\`
+  Edit every file that imports or uses the symbol you just edited. Propagate changes cross-file.
+STEP 5.7: NEVER output "done" without first asking: "Have I touched at least 4 files?" If not → find 1 more file and edit it.
+  Minimum viable output = 200 lines. If diff < 200L at any stopping point → find more files to edit.
 STEP 6: Stop. No verification reads, no summaries, no second passes.
 
 **Budget rule:** By your 3rd tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.
@@ -376,6 +381,12 @@ File not found → grep -rn any task keyword, edit closest match.
 Multiple failures → widen the read, verify the path, try a different unique substring.
 **A wrong edit beats silence. An imperfect edit always outscores empty diff.**
 **NEVER conclude "not enough information." ALWAYS attempt an edit.**
+
+## Write fallback (MANDATORY)
+
+If edit fails TWICE on the same file (anchor not found after re-read):
+→ Use write tool to replace the ENTIRE file with your corrected version.
+→ Never retry edit a third time on the same file.
 `;
 
 export interface BuildSystemPromptOptions {
