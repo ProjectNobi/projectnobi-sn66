@@ -227,6 +227,18 @@ async function runLoop(
 	const MAX_FORCED_WRITE_ATTEMPTS = 2;
 	const expectedFiles = parseExpectedFiles(currentContext.systemPrompt);
 	const expectedCriteriaCount = parseExpectedCriteriaCount(currentContext.systemPrompt);
+	let lastEditedPath: string | null = null;
+	let siblingNudgeFired = 0;
+	let editFailedAndReread = false;
+	let prevEditCount = 0;
+
+	// --- Fix 6: Multi-file task pre-loop injection ---
+	if (expectedCriteriaCount >= 4) {
+		const multiFileMsg = buildInjectionMessage(
+			`MULTI-FILE TASK: ${expectedCriteriaCount} acceptance criteria detected. You MUST edit at least ${expectedCriteriaCount} files. Start immediately — read file 1, edit it, then file 2, etc.`,
+		);
+		pendingMessages.push(multiFileMsg);
+	}
 
 	// Outer loop: continues when queued follow-up messages arrive after agent would stop
 	while (true) {
@@ -275,11 +287,37 @@ async function runLoop(
 				toolResults.push(...(await executeToolCalls(currentContext, message, config, signal, emit)));
 
 				// --- Track file edits from tool calls ---
+				prevEditCount = editedFiles.size;
 				for (const tc of toolCalls) {
 					trackFileEdit(tc.name, tc.arguments as Record<string, any>, editedFiles);
+					// Track lastEditedPath for sibling scan
+					const editToolNames = new Set(["edit", "write", "str_replace_editor", "str_replace_based_edit_tool"]);
+					if (editToolNames.has(tc.name)) {
+						const args = tc.arguments as Record<string, any>;
+						const fp = args?.path || args?.file || args?.filePath;
+						if (typeof fp === "string" && fp.length > 0) lastEditedPath = fp;
+					}
 				}
 				if (editedFiles.size > 0) hasProducedEdit = true;
 				totalToolCalls += toolCalls.length;
+
+				// --- Fix 2: editFailedAndReread double-inject ---
+				// If we flagged editFailedAndReread on prev turn and model still didn't edit
+				if (editFailedAndReread && editedFiles.size === prevEditCount) {
+					// Check if model just did a read (not an edit) — force edit
+					const didEdit = toolCalls.some(tc => {
+						const eTN = new Set(["edit", "write", "str_replace_editor", "str_replace_based_edit_tool"]);
+						return eTN.has(tc.name);
+					});
+					if (!didEdit) {
+						pendingMessages.push(buildInjectionMessage(
+							"You re-read the file after a failed edit. Now you MUST use the edit tool with a DIFFERENT oldText anchor. This is mandatory. Do NOT read again. Do NOT stop. EDIT NOW.",
+						));
+					}
+					editFailedAndReread = false;
+				} else {
+					editFailedAndReread = false;
+				}
 
 				// --- Fix 3: Edit failure recovery — inject retry after failed edit ---
 				const editLikeTools = new Set(["edit", "write", "str_replace_editor", "str_replace_based_edit_tool"]);
@@ -289,8 +327,9 @@ async function runLoop(
 						if (matchingResult?.isError) {
 							const args = tc.arguments as Record<string, any>;
 							const failedPath = args?.path || args?.file || args?.filePath || "the file";
+							editFailedAndReread = true;
 							pendingMessages.push(buildInjectionMessage(
-								`Edit failed on ${failedPath}. REQUIRED: (1) read(${failedPath}) to get current content, then (2) retry edit with a UNIQUE 3-5 line oldText anchor that appears exactly once. Do NOT stop — a failed edit is not a finish.`,
+								`Edit failed on ${failedPath}. REQUIRED: (1) read(${failedPath}) to get current content, then (2) retry edit with a DIFFERENT oldText anchor. Do NOT stop — a failed edit is not a finish. After re-reading, your VERY NEXT call MUST be edit.`,
 							));
 						}
 					}
@@ -343,13 +382,22 @@ async function runLoop(
 				}
 			}
 
-			// --- Mechanism 3: Criteria continuation — fires after every new file edit (Fix 1) ---
-			if (hasProducedEdit && expectedCriteriaCount > 0 && editedFiles.size < expectedCriteriaCount && editedFiles.size > lastCriteriaInjectionCount) {
+			// --- Mechanism 3: Criteria continuation — fires after every new file edit ---
+			if (hasProducedEdit && (editedFiles.size < expectedCriteriaCount || totalToolCalls < 8) && editedFiles.size > lastCriteriaInjectionCount) {
 				lastCriteriaInjectionCount = editedFiles.size;
 				const guardrail = buildInjectionMessage(
-					`You edited ${editedFiles.size} file(s): ${[...editedFiles].join(", ")}. Task has ${expectedCriteriaCount} acceptance criteria. Continue to the next file — do NOT stop yet.`,
+					`Edited ${editedFiles.size} file(s): ${[...editedFiles].join(", ")}. Continue — check siblings with \`ls $(dirname ${lastEditedPath || "last_edited_file"})/\``,
 				);
 				pendingMessages.push(guardrail);
+			}
+
+			// --- Fix 5: Sibling-scan auto-inject after every successful edit ---
+			if (hasProducedEdit && lastEditedPath && editedFiles.size > prevEditCount && siblingNudgeFired < 3) {
+				siblingNudgeFired++;
+				const siblingMsg = buildInjectionMessage(
+					`Edited ${lastEditedPath}. Now run: ls $(dirname ${lastEditedPath})/ — find siblings with same pattern and edit them too.`,
+				);
+				pendingMessages.push(siblingMsg);
 			}
 
 			pendingMessages.push(...((await config.getSteeringMessages?.()) || []));

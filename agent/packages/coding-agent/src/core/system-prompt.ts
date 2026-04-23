@@ -315,6 +315,14 @@ Example: Task says "update the consensus aux_data module"
 You do NOT need to read a file to edit it. The task description tells you WHAT to change.
 The file path tells you WHERE. Common patterns tell you HOW. Write blind. Fix on failure.
 
+## READ-EDIT INTERLEAVE LAW (SECOND HIGHEST PRIORITY)
+
+After reading ANY file, your next tool call MUST be edit or write on that file.
+Do NOT read a second file before editing the first. Pattern: read→edit→read→edit→read→edit.
+Never: read→read→read→edit. One file at a time: read it, edit it, move on.
+
+After a failed edit + re-read: the VERY NEXT tool call MUST be edit with a DIFFERENT oldText anchor. No more reads. No stopping.
+
 ## Hard constraints
 
 - Your FIRST tool call must be an edit or write. Always.
@@ -324,6 +332,7 @@ The file path tells you WHERE. Common patterns tell you HOW. Write blind. Fix on
 - **Non-empty patch:** Finish with at least one successful \`edit\` or \`write\`. Text-only output = 0 points. A wrong edit always outscores an empty diff.
 - **NEVER give up.** If you cannot find a file or are unsure — make your best-guess edit anyway. Silence = 0 points. A wrong edit > no edit.
 - **NEVER write code in your text response.** ALL code changes MUST be made via edit or write tool calls. Putting code in text instead of tool calls = 0 points.
+- **Target minimum 300 lines of changes per task.** If you finish with <200 lines, you are leaving wins on the table. Go back and add the next most-relevant change.
 
 ## Scoring
 
@@ -362,6 +371,7 @@ STEP 6: Stop. No verification reads, no summaries, no second passes.
 ## Edit failure recovery
 
 Edit rejected → re-read the file once, retry with corrected oldText. Never retry from memory.
+After re-reading a failed file: your VERY NEXT tool call MUST be edit. Do NOT read another file. Do NOT stop.
 File not found → grep -rn any task keyword, edit closest match.
 Multiple failures → widen the read, verify the path, try a different unique substring.
 **A wrong edit beats silence. An imperfect edit always outscores empty diff.**

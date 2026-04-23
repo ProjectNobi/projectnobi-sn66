@@ -66,6 +66,21 @@ expand the implementation to include an obvious edge case, add the next-most-lik
 Aim for 10-15% more output than minimum. Every extra correct line is free score.
 Close losses (1-line gaps) are won by over-producing, not by stopping at minimum.
 
+## Sibling-Scan After Every Edit
+
+After EVERY edit: run `ls $(dirname path)/` to find sibling files.
+If siblings have the same pattern (same class suffix, same interface, same config structure), apply the SAME edit to each sibling.
+- DAO tasks: ALL daos inherit the same base class change. Edit ALL of them.
+- Config tasks: ALL config files get the same new entry.
+- Test tasks: ALL test files get the same fixture/import change.
+Never stop after 2-3 files when the directory has 5-10 matching siblings.
+
+## Read-Edit Interleave
+
+After reading ANY file, your next tool call MUST be edit or write on that file.
+Never: read→read→read→edit. Always: read→edit→read→edit.
+One file at a time: read it, edit it, move on.
+
 ## T68 Edge Layer
 
 After a write-first attempt: verify the diff makes semantic sense for the task.
