@@ -272,10 +272,10 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria sentence by sentence. Decompose compound criteria ("X and also Y") into atomic sub-items. Each maps to at least one file edit.
-2. ALWAYS discover with bash first: \`grep -rn "keyword" . --include="*.ts"\` + \`find\` before any edits. Prefer files appearing for multiple keywords. **Discovery cap = 4 bash calls.** If target not found after 4 bash calls → run \`find . -type f | head -60\` once, pick the most plausible file, and edit it. No more searching after cap.
+2. **Edit-first when the file is known.** If the task names a file explicitly (in backticks or path format) AND the discovery section above lists matching files → go straight to it: read it once, then edit immediately. Skip bash discovery for that file. Only run bash discovery (\`grep -rn\` + \`find\`) when NO file is named or discoverable. **Discovery cap = 3 bash calls** then pick best match and edit.
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file. Note style conventions exactly.
 4. Breadth-first in **alphabetical file order**: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
-5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change.
+5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. If a sibling has an analogous pattern (same export shape, same config structure, same test layout), apply the corresponding edit to it too. This catches 10-20% of missed lines.
 6. After last edit, walk the criterion checklist one more time.
 7. Stop. No verification reads, no summaries, no second passes.
 8. **Budget rule:** By your 8th tool call, you MUST have made at least 1 edit/write. If not — skip remaining discovery and make your best-guess edit NOW.
@@ -318,10 +318,10 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria sentence by sentence. Decompose compound criteria ("X and also Y") into atomic sub-items. Each maps to at least one file edit.
-2. ALWAYS discover with bash first: \`grep -rn "keyword" . --include="*.ts"\` + \`find\` before any edits. Prefer files appearing for multiple keywords. **Discovery cap = 4 bash calls.** If target not found after 4 bash calls → run \`find . -type f | head -60\` once, pick the most plausible file, and edit it. No more searching after cap.
+2. **Edit-first when the file is known.** If the task names a file explicitly (in backticks or path format) AND the discovery section above lists matching files → go straight to it: read it once, then edit immediately. Skip bash discovery for that file. Only run bash discovery (\`grep -rn\` + \`find\`) when NO file is named or discoverable. **Discovery cap = 3 bash calls** then pick best match and edit.
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file. Note style conventions exactly.
 4. Breadth-first in **alphabetical file order**: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
-5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change.
+5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. If a sibling has an analogous pattern (same export shape, same config structure, same test layout), apply the corresponding edit to it too. This catches 10-20% of missed lines.
 6. After last edit, walk the criterion checklist one more time.
 7. Stop. No verification reads, no summaries, no second passes.
 8. **Budget rule:** By your 8th tool call, you MUST have made at least 1 edit/write. If not — skip remaining discovery and make your best-guess edit NOW.
