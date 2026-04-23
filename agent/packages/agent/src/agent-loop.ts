@@ -149,6 +149,57 @@ function createAgentStream(): EventStream<AgentEvent, AgentMessage[]> {
 	);
 }
 
+// ---------------------------------------------------------------------------
+// Coverage tracking helpers — port of king's 3 runtime mechanisms
+// ---------------------------------------------------------------------------
+
+/** Extract candidate file paths from the DISCOVERY section of the system prompt */
+function parseExpectedFiles(systemPrompt: string): string[] {
+	const files: string[] = [];
+	const discoveryBlock = systemPrompt.match(
+		/(?:FILES EXPLICITLY NAMED|FILES MATCHING BY NAME|FILES CONTAINING|LIKELY RELEVANT FILES)[^\n]*\n([\s\S]*?)(?:\n\n|\n(?=[A-Z])|\n(?=##)|$)/gi,
+	);
+	if (discoveryBlock) {
+		for (const block of discoveryBlock) {
+			const lines = block.split("\n");
+			for (const line of lines) {
+				const m = line.match(/^-\s+(\S+\.\w{1,6})/);
+				if (m) files.push(m[1]);
+			}
+		}
+	}
+	const named = systemPrompt.match(/Files named in the task text:\s*(.*)/i);
+	if (named) {
+		const ticks = named[1].match(/`([^`]+)`/g);
+		if (ticks) {
+			for (const t of ticks) files.push(t.replace(/`/g, ""));
+		}
+	}
+	return [...new Set(files)];
+}
+
+function parseExpectedCriteriaCount(systemPrompt: string): number {
+	const m = systemPrompt.match(/This task has (\d+) acceptance criteria/i);
+	return m ? parseInt(m[1], 10) : 0;
+}
+
+function trackFileEdit(toolName: string, args: Record<string, any>, editedFiles: Set<string>): void {
+	if (toolName === "edit" || toolName === "write") {
+		const filePath = args?.path || args?.file || args?.filePath;
+		if (typeof filePath === "string" && filePath.length > 0) {
+			editedFiles.add(filePath.replace(/^\.\//, ""));
+		}
+	}
+}
+
+function buildInjectionMessage(text: string): AgentMessage {
+	return {
+		role: "user",
+		content: [{ type: "text", text }],
+		timestamp: Date.now(),
+	};
+}
+
 /**
  * Main loop logic shared by agentLoop and agentLoopContinue.
  */
@@ -163,6 +214,15 @@ async function runLoop(
 	let firstTurn = true;
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
+
+	// --- King's 3 mechanisms: tracking state ---
+	const editedFiles = new Set<string>();
+	let hasProducedEdit = false;
+	let zeroOutputRescueFired = false;
+	let coverageNudgeFired = false;
+	let criteriaGuardrailFired = false;
+	const expectedFiles = parseExpectedFiles(currentContext.systemPrompt);
+	const expectedCriteriaCount = parseExpectedCriteriaCount(currentContext.systemPrompt);
 
 	// Outer loop: continues when queued follow-up messages arrive after agent would stop
 	while (true) {
@@ -205,6 +265,12 @@ async function runLoop(
 			if (hasMoreToolCalls) {
 				toolResults.push(...(await executeToolCalls(currentContext, message, config, signal, emit)));
 
+				// --- Track file edits from tool calls ---
+				for (const tc of toolCalls) {
+					trackFileEdit(tc.name, tc.arguments as Record<string, any>, editedFiles);
+				}
+				if (editedFiles.size > 0) hasProducedEdit = true;
+
 				for (const result of toolResults) {
 					currentContext.messages.push(result);
 					newMessages.push(result);
@@ -213,7 +279,45 @@ async function runLoop(
 
 			await emit({ type: "turn_end", message, toolResults });
 
-			pendingMessages = (await config.getSteeringMessages?.()) || [];
+			// --- Mechanism 2: Coverage nudge (after edits, check unedited candidate files) ---
+			if (hasProducedEdit && !coverageNudgeFired && expectedFiles.length > 0) {
+				const uneditedCandidates = expectedFiles.filter((f) => {
+					for (const ef of editedFiles) {
+						if (ef === f || ef.endsWith("/" + f) || f.endsWith("/" + ef)) return false;
+					}
+					return true;
+				});
+				if (uneditedCandidates.length > 0 && uneditedCandidates.length < expectedFiles.length) {
+					coverageNudgeFired = true;
+					const nudge = buildInjectionMessage(
+						`DO NOT STOP yet. Unedited candidate files from discovery: ${uneditedCandidates.join(", ")}. Check if they need changes for the acceptance criteria.`,
+					);
+					pendingMessages.push(nudge);
+				}
+			}
+
+			// --- Mechanism 3: Criteria guardrail (editedFileCount < expectedCriteriaCount) ---
+			if (hasProducedEdit && !criteriaGuardrailFired && expectedCriteriaCount > 0) {
+				if (editedFiles.size < expectedCriteriaCount && !hasMoreToolCalls) {
+					criteriaGuardrailFired = true;
+					const guardrail = buildInjectionMessage(
+						`WARNING: Task has ${expectedCriteriaCount} acceptance criteria but you have only edited ${editedFiles.size} file(s): ${[...editedFiles].join(", ")}. Review criteria and ensure each is addressed.`,
+					);
+					pendingMessages.push(guardrail);
+				}
+			}
+
+			pendingMessages.push(...((await config.getSteeringMessages?.()) || []));
+		}
+
+		// --- Mechanism 1: Zero-output rescue (model stopped with 0 file changes) ---
+		if (!hasProducedEdit && !zeroOutputRescueFired) {
+			zeroOutputRescueFired = true;
+			const rescue = buildInjectionMessage(
+				"You are about to finish with ZERO file changes. This guarantees a loss — empty patches score worst. You MUST apply at least one edit or write now. Go back to the task, pick the highest-priority file, and make the required change.",
+			);
+			pendingMessages = [rescue];
+			continue;
 		}
 
 		// Agent would stop here. Check for follow-up messages.
