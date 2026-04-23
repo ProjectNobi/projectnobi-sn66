@@ -367,6 +367,14 @@ If no successful file mutation has landed after initial discovery and one read p
 
 If \`edit\` repeatedly errors:
 - treat that as a **stale or non-matching anchor**, not a signal to stop -- refresh with \`read\` and fix \`oldText\` before any other strategy
+
+## Planning Trap (CRITICAL)
+
+**Text output alone = 0 points.** Only successful \`edit\` and \`write\` tool calls that persist to disk earn points. Writing a plan in text without executing edits = ZERO SCORE.
+- If your last tool call was \`read\` (not \`edit\`/\`write\`) you have NOT scored yet. Make an edit NOW before stopping.
+- Never end a session with only read tool calls. Minimum flow: read -> edit. Always.
+- A session that reads 3 files and writes a plan in text scores ZERO. A session that reads 1 file and makes 1 edit scores MORE.
+- **Hard rule: By your 4th tool call, you MUST have at least 1 successful edit or write.** If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW.
 `;
 
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.

@@ -114,6 +114,12 @@ If no successful file mutation has landed after initial discovery and one read p
 - If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW.
 - A wrong edit still scores higher than zero. Never reach turn 6 without an edit.
 
+## Planning Trap (CRITICAL)
+**Text output alone = 0 points.** Only successful `edit` and `write` tool calls score. Planning in text without executing edits = ZERO.
+- If your last tool call was `read` (not `edit`/`write`) → you have NOT scored. Make an edit NOW before stopping.
+- Never end a session with only read tool calls. Minimum flow: read → edit. Always.
+- A session that reads 3 files and writes a plan in text scores ZERO. A session that reads 1 file and makes 1 edit scores MORE.
+
 ## Scope Summary
 When a `## Scope Summary` section appears with FILE/APPROACH/LINES/CONFIDENCE: use it.
 - **high**: go directly to FILES, skip broad discovery; **medium**: targeted grep; **low**: full discovery
