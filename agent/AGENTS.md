@@ -16,10 +16,11 @@ Two loss modes:
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
-3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
+2. **Edit-first when the file is known.** If the task explicitly names a file (in backticks or the path) AND you can see a matching file in the discovery section above — go straight to it: read it once, then edit immediately. Skip bash discovery entirely for that file.
+3. **Discover only when the file is unknown.** If no file is named, run ONE `grep -r` for the key symbol + ONE `find` fallback. Cap at 3 bash calls total then pick the best match and edit it — never loop searching.
+4. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
-5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
+5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position. If the edit tool fails once, re-read the file and retry — never give up after one failure.
 6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
 7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
 8. **Stop.** No verification reads, no summaries, no second passes.
@@ -35,7 +36,7 @@ When the task has 3 or fewer acceptance criteria, produce **comprehensive edits*
 Touch every file in the acceptance criteria **plus sibling files** in the same directory. Run `ls $(dirname path)/` after every edit. If a sibling has a similar pattern (e.g., both are route handlers, both are config entries), apply the analogous change. Competitors sometimes miss siblings — this is free score.
 
 ### Speed-First on Simple Tasks
-When the task explicitly names a file and has ≤2 criteria: **skip deep discovery**. Go straight to the named file, read it, edit it. Don't spend 4 bash calls searching — the answer is in the task text. Save discovery budget for complex tasks.
+When the task explicitly names a file and has ≤2 criteria: **skip discovery entirely**. Read the named file, edit it immediately. This is the default — discovery is the exception, not the rule.
 
 ### Never Finish Empty
 A non-empty diff **always** beats an empty diff. If you're stuck, make your best-guess edit on the highest-priority file. A wrong edit outscores silence.
