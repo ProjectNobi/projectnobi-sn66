@@ -278,7 +278,7 @@ Two loss modes:
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. If a sibling has an analogous pattern (same export shape, same config structure, same test layout), apply the corresponding edit to it too. This catches 10-20% of missed lines.
 6. After last edit, walk the criterion checklist one more time.
 7. Stop. No verification reads, no summaries, no second passes.
-8. **Budget rule:** By your 8th tool call, you MUST have made at least 1 edit/write. If not — skip remaining discovery and make your best-guess edit NOW.
+8. **Budget rule:** By your 5th tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.
 
 ## Diff Precision
 
@@ -324,7 +324,7 @@ Two loss modes:
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. If a sibling has an analogous pattern (same export shape, same config structure, same test layout), apply the corresponding edit to it too. This catches 10-20% of missed lines.
 6. After last edit, walk the criterion checklist one more time.
 7. Stop. No verification reads, no summaries, no second passes.
-8. **Budget rule:** By your 8th tool call, you MUST have made at least 1 edit/write. If not — skip remaining discovery and make your best-guess edit NOW.
+8. **Budget rule:** By your 5th tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.
 
 ## Diff Precision
 

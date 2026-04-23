@@ -219,8 +219,10 @@ async function runLoop(
 	const editedFiles = new Set<string>();
 	let hasProducedEdit = false;
 	let zeroOutputRescueFired = false;
+	let earlyRescueFired = false;
 	let coverageNudgeFired = false;
 	let criteriaGuardrailFired = false;
+	let totalToolCalls = 0;
 	const expectedFiles = parseExpectedFiles(currentContext.systemPrompt);
 	const expectedCriteriaCount = parseExpectedCriteriaCount(currentContext.systemPrompt);
 
@@ -253,6 +255,11 @@ async function runLoop(
 
 			if (message.stopReason === "error" || message.stopReason === "aborted") {
 				await emit({ type: "turn_end", message, toolResults: [] });
+				// If error and no edits produced, don't just die — break to outer loop rescue
+				if (!hasProducedEdit) {
+					hasMoreToolCalls = false;
+					break;
+				}
 				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
@@ -270,10 +277,20 @@ async function runLoop(
 					trackFileEdit(tc.name, tc.arguments as Record<string, any>, editedFiles);
 				}
 				if (editedFiles.size > 0) hasProducedEdit = true;
+				totalToolCalls += toolCalls.length;
 
 				for (const result of toolResults) {
 					currentContext.messages.push(result);
 					newMessages.push(result);
+				}
+
+				// --- Mechanism 0: Early rescue (force edit BEFORE context overflow) ---
+				if (!hasProducedEdit && !earlyRescueFired && totalToolCalls >= 5) {
+					earlyRescueFired = true;
+					const earlyRescue = buildInjectionMessage(
+						"URGENT: You have used 5+ tool calls with ZERO edits/writes. Context is running out. You MUST make an edit or write on your VERY NEXT tool call. Pick the most relevant file you have read and apply the change NOW. Do NOT run any more bash or read commands first.",
+					);
+					pendingMessages.push(earlyRescue);
 				}
 			}
 
