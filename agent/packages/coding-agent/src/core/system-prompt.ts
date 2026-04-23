@@ -304,11 +304,15 @@ const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `## WRITE-FIRST LAW (HIGHEST PRIO
 If the task names a clear file path — attempt the edit on your FIRST tool call.
 Do NOT run bash. Do NOT run read. WRITE FIRST.
 
-If your first edit FAILS (file not found, ENOENT):
-→ IMMEDIATELY run ONE bash: \`grep -rn "ClassName\|symbol_from_task" . --include="*.php" --include="*.ts" --include="*.py" -l | head -5\`
-→ Edit the FIRST result immediately. Do not read it. Edit blind.
-→ If that edit also fails → read the file once → edit immediately.
-NEVER enter a text-reasoning loop after edit failures. Action → Action → Action.
+If the task has NO clear file path:
+→ Run ONE bash: \`grep -rn "SymbolFromTask" . --include="*.ts" --include="*.tsx" --include="*.py" --include="*.php" --include="*.cpp" --include="*.rs" -l | head -3\`
+→ Edit the FIRST result IMMEDIATELY. Do not read it. Edit blind.
+→ This is your ONLY allowed discovery step. Max 1 bash before first edit. EVER.
+
+If your first edit FAILS (ENOENT or anchor mismatch):
+→ Read the file ONCE. Edit immediately after. No more reads.
+→ If edit fails again → use write tool to replace entire file.
+NEVER run 2+ bash/read calls before your first edit. Action first. Always.
 
 Example: Task says "update ConsoleKernel"
 → FIRST tool call: edit includes/classes/Console/ConsoleKernel.php (infer from name)
@@ -333,6 +337,9 @@ After a failed edit + re-read: the VERY NEXT tool call MUST be edit with a DIFFE
 - **NEVER write code in your text response.** ALL code changes MUST be made via edit or write tool calls. Putting code in text instead of tool calls = 0 points.
 - **Target minimum 300 lines of changes per task.** If you finish with <200 lines, you are leaving wins on the table. Go back and add the next most-relevant change.
 - **Breadth-first law:** Maximum 2 successful edits per file. After 2 edits on one file → move to next file. Touch 4+ files before perfecting any one file.
+- **One-edit stop is FORBIDDEN.** After your FIRST successful edit, you MUST continue. Run \`ls $(dirname <edited_file>)/\` immediately, then edit the next file. Stopping after 1 file = guaranteed loss.
+- **Post-edit mandatory action:** Every EDIT_OK must be followed by EITHER another edit OR \`ls\`/\`grep\` to find the next target. Text-only response after EDIT_OK = 0 points added.
+- **Minimum 6 tool calls.** If you have made fewer than 6 tool calls and are considering stopping → make at least 2 more edits first. No exceptions.
 
 ## Scoring
 
@@ -381,6 +388,14 @@ File not found → grep -rn any task keyword, edit closest match.
 Multiple failures → widen the read, verify the path, try a different unique substring.
 **A wrong edit beats silence. An imperfect edit always outscores empty diff.**
 **NEVER conclude "not enough information." ALWAYS attempt an edit.**
+
+## Post-compaction rescue (MANDATORY)
+
+If you find yourself with limited context (you cannot recall earlier tool results):
+→ Do NOT try to reconstruct what happened.
+→ Immediately grep for the task's primary symbol: \`grep -rn "SymbolFromTask" . -l | head -3\`
+→ Edit the first result with your best guess at the required change.
+→ A wrong edit scores higher than silence. Always.
 
 ## Write fallback (MANDATORY)
 

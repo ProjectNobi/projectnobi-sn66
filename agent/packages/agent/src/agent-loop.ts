@@ -383,12 +383,19 @@ async function runLoop(
 			}
 
 			// --- Mechanism 3: Criteria continuation — fires after every new file edit ---
-			if (hasProducedEdit && (editedFiles.size < expectedCriteriaCount || totalToolCalls < 8) && editedFiles.size > lastCriteriaInjectionCount) {
+			if (hasProducedEdit && editedFiles.size > lastCriteriaInjectionCount) {
 				lastCriteriaInjectionCount = editedFiles.size;
-				const guardrail = buildInjectionMessage(
-					`Edited ${editedFiles.size} file(s): ${[...editedFiles].join(", ")}. Continue — check siblings with \`ls $(dirname ${lastEditedPath || "last_edited_file"})/\``,
-				);
-				pendingMessages.push(guardrail);
+				const isEarlyStop = totalToolCalls < 6;
+				const needsMore = editedFiles.size < expectedCriteriaCount || totalToolCalls < 8;
+				if (needsMore || isEarlyStop) {
+					const urgency = isEarlyStop
+						? `DO NOT STOP. Only ${totalToolCalls} tool calls made — MINIMUM IS 6. You MUST make at least ${6 - totalToolCalls} more edits RIGHT NOW.`
+						: `Edited ${editedFiles.size} file(s). Continue — check siblings.`;
+					const guardrail = buildInjectionMessage(
+						`${urgency} Edited so far: ${[...editedFiles].join(", ")}. Run \`ls $(dirname ${lastEditedPath || "last_edited_file"})/\` then edit the next file. Stopping after ${editedFiles.size} file(s) = guaranteed loss.`,
+					);
+					pendingMessages.push(guardrail);
+				}
 			}
 
 			// --- Fix 5: Sibling-scan auto-inject after every successful edit ---
