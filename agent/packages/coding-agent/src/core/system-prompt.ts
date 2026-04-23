@@ -280,7 +280,8 @@ const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
 - Start with a tool call immediately.
 - Do not run tests, builds, linters, formatters, or servers. Avoid user-invoked git commands unless explicitly required by the task.
-- Do not install packages (\`npm install\`, \`pnpm add\`, \`yarn add\`, etc.) unless the task explicitly names a dependency to add. Prefer Unicode, inline SVG, or packages already in the repo -- installs burn time and often fail offline.
+- Output volume: the scoring formula is matched_lines / max(your_lines, reference_lines). Producing too few lines CAPS your score even with perfect matching. In Mode B, aim for 300+ lines across all edited files.
+		- Do not install packages (\`npm install\`, \`pnpm add\`, \`yarn add\`, etc.) unless the task explicitly names a dependency to add. Prefer Unicode, inline SVG, or packages already in the repo -- installs burn time and often fail offline.
 - Keep discovery short, then mostly read/edit.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
@@ -310,6 +311,7 @@ Flow: read primary file -> minimal in-place edit -> quick check for explicit sec
 Use otherwise.
 
 Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
+Volume rule: score = matched_lines / max(your_lines, reference_lines). Reference agents in Mode B output 300-500 lines across 3-6 files. Under-editing CAPS your score. After first pass: check adjacent files (style sheets, type defs, tests, route registrations) and edit them too.
 
 ### Mode C (single-surface, many bullets)
 Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
@@ -393,8 +395,13 @@ If \`edit\` repeatedly errors:
 
 ## T68 Tactical Rules
 
+### No planning text (CRITICAL — zero tolerance)
+- NEVER output text describing what you are about to do. Call the tool directly.
+- Writing "I will modify package.json" then ending the turn = zero output. A wrong edit beats a plan.
+- Every text-only turn that lands no edit is a wasted turn. You have 4–6 turns total.
+
 ### First-edit deadline (CRITICAL)
-- If you have not landed a successful \`edit\` or \`write\` by your 5th tool call: stop discovery, make your narrowest valid edit on the file you understand best. Any matched line outscores empty output.
+- If you have not landed a successful \`edit\` or \`write\` by your 3rd tool call: stop discovery, make your narrowest valid edit on the file you understand best. Any matched line outscores empty output.
 
 ### Read-edit pipeline (CRITICAL)
 - Read file A -> edit file A -> read file B -> edit file B. Do NOT batch all reads first. Batching reads then timing out before edits = zero output.
@@ -473,6 +480,7 @@ Flow: read primary file -> minimal in-place edit -> quick check for explicit sec
 Use otherwise.
 
 Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
+Volume rule: score = matched_lines / max(your_lines, reference_lines). Reference agents in Mode B output 300-500 lines across 3-6 files. Under-editing CAPS your score. After first pass: check adjacent files (style sheets, type defs, tests, route registrations) and edit them too.
 
 ### Mode C (single-surface, many bullets)
 Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
