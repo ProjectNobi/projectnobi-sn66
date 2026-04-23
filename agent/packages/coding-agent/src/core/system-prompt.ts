@@ -244,31 +244,6 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 		sections.push("Priority ladder for target selection: (1) explicit acceptance-criteria signal, (2) named file signal, (3) nearest sibling logic/wiring signal.");
 		sections.push("Literality: when several edits would satisfy the task, prefer the most boring continuation of nearby code (same patterns, naming, and ordering as neighbors).");
 
-		// T68 MOAT: Task type classifier (Opus v39 audit — parallel if, non-exclusive)
-		const taskLower = taskText.toLowerCase();
-		// Use parallel if (not else-if) so multi-type tasks get all relevant hints
-		if (/\b(modal|button|component|render|display|layout|form|input|dropdown|tooltip)\b/.test(taskLower)) {
-			sections.push('\nTASK TYPE: UI/Component — modify existing file inline; do NOT create new component files; copy adjacent patterns exactly. Check for co-located style file (*.module.css, *.styled.ts) — it likely needs updating too.');
-		}
-		if (/\b(api|route|endpoint|handler|controller|middleware)\b/.test(taskLower)) {
-			sections.push('\nTASK TYPE: API/Route — search for route file, handler file, and types file. Edit ONLY files where the task requires a change — do NOT force edits to all 3 if scope is narrower.');
-		}
-		if (/\b(config|setting|option|flag|toggle|feature)\b/.test(taskLower)) {
-			sections.push('\nTASK TYPE: Config — edit config file directly; match surrounding key-value style; do NOT add extra keys.');
-		}
-		if (/\b(test|spec|mock|fixture|assert|expect)\b/.test(taskLower)) {
-			sections.push('\nTASK TYPE: Test — add cases to existing test file; follow existing describe/it structure exactly.');
-		}
-		if (/\b(schema|migration|model|fixture|seed|database|db)\b/.test(taskLower)) {
-			sections.push('\nTASK TYPE: Data/Schema — edit schema/model file; check if migration file also needs updating; data files (.json, .sql, .prisma) count toward score.');
-		}
-		if (/\b(css|style|styled|scss|sass|tailwind|classname|classnames)\b/.test(taskLower)) {
-			sections.push('\nTASK TYPE: Style/CSS — edit the style file directly; match existing selector patterns and spacing exactly; check if component also needs className update.');
-		}
-		if (/\b(django|flask|rails|spring|express|laravel|nextjs|next\.js|nuxt|sveltekit|remix|astro)\b/.test(taskLower) || /\b(manage\.py|Gemfile|pom\.xml|composer\.json|next\.config)\b/.test(taskLower)) {
-			sections.push('\nFRAMEWORK DETECTED — go directly to entry point: Django(urls.py), Flask(app.py), Rails(config/routes.rb), Spring(@RestController), Express(app.js), Laravel(routes/web.php), Next.js(app/ or pages/), Nuxt(pages/), SvelteKit(src/routes/), Remix(app/routes/).');
-		}
-
 		return "\n\n" + sections.join("\n") + "\n";
 	} catch { }
 	return "";
@@ -278,9 +253,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 // Keeps the model focused on minimal, style-accurate, high-alignment edits.
 const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
-- Start with a tool call immediately.
-- Do not run tests, builds, linters, formatters, or servers. Avoid user-invoked git commands unless explicitly required by the task.
-- Output volume: the scoring formula is matched_lines / max(your_lines, reference_lines). Producing too few lines CAPS your score even with perfect matching. In Mode B, aim for 300+ lines across all edited files.
+ - Start with a tool call immediately.
 		- Do not install packages (\`npm install\`, \`pnpm add\`, \`yarn add\`, etc.) unless the task explicitly names a dependency to add. Prefer Unicode, inline SVG, or packages already in the repo -- installs burn time and often fail offline.
 - Keep discovery short, then mostly read/edit.
 - Read a file before editing that file.
@@ -393,53 +366,6 @@ If no successful file mutation has landed after initial discovery and one read p
 If \`edit\` repeatedly errors:
 - treat that as a **stale or non-matching anchor**, not a signal to stop -- refresh with \`read\` and fix \`oldText\` before any other strategy
 
-## T68 Tactical Rules
-
-### No planning text (CRITICAL — zero tolerance)
-- NEVER output text describing what you are about to do. Call the tool directly.
-- Writing "I will modify package.json" then ending the turn = zero output. A wrong edit beats a plan.
-- Every text-only turn that lands no edit is a wasted turn. You have 4–6 turns total.
-
-### First-edit deadline (CRITICAL)
-- If you have not landed a successful \`edit\` or \`write\` by your 3rd tool call: stop discovery, make your narrowest valid edit on the file you understand best. Any matched line outscores empty output.
-
-### Read-edit pipeline (CRITICAL)
-- Read file A -> edit file A -> read file B -> edit file B. Do NOT batch all reads first. Batching reads then timing out before edits = zero output.
-
-### Re-reading policy (CRITICAL -- single rule)
-- Do NOT re-read a file unless an edit on that file failed. On failure: re-read once, retry with corrected anchor from the fresh read. After 2 failures same file: try different anchor location in that file. After 4 total failures: make smallest confident edit and stop.
-
-### Discovery fallback chain
-1. Grep task-specific terms in relevant extensions
-2. Extract path fragments from task text, try directly
-3. Check framework-conventional locations (urls.py, routes.rb, app/routes, pages/, src/routes/)
-4. If still nothing: edit the most-mentioned file in the task text
-
-### Import co-location rule
-Whenever you add a reference to a new module, function, or component: add its import statement in the same edit. Missing imports = byte-exact mismatch on the reference diff.
-
-### CSS co-location rule
-When editing a UI component: check for a co-located style file (*.module.css, *.styled.ts, *.scss). If it exists and the task involves visual changes, it likely needs updating too.
-
-### Criteria coverage gate
-Before stopping: walk every acceptance criterion and verify it has a corresponding edit. Any unaddressed criterion = continue editing.
-
-### JSON/config mass-update (CRITICAL — learned from 29-read zero-output failure)
-If task asks to add/change a field in MANY JSON/config files:
-1. find all files with one bash command
-2. Read ONE file to understand structure
-3. Use bash+python3 to update ALL files at once (one tool call)
-4. NEVER read each file individually — 10+ reads before editing = timeout = zero output = worst loss
-
-### Timeout survival
-If fewer than 60 seconds remain: stop all discovery, submit current diff immediately. Timeout = zero output = worst score.
-
-### Impact-first file ordering
-When multiple files need edits: apply the highest-impact edit first (most keyword matches, explicitly named). If session ends early, most valuable edit already landed.
-
----
-
-`;
 
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 Your diff is scored against a hidden reference diff for the same task.
