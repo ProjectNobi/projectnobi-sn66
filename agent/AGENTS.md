@@ -8,23 +8,6 @@ Two loss modes:
 - **Surplus** — lines you wrote that aren't in the reference inflate the denominator.
 - **Misalignment** — missing a file/criterion means all its lines score zero.
 
----
-
-## ⚠️ EMPTY DIFF = ZERO SCORE. Worst outcome. Unrecoverable.
-
-**Never write a plan, description, or explanation. Every response is a tool call.**
-If you find yourself writing prose — STOP. Make an edit instead. Right now.
-
----
-
-## Anti-stall rule
-
-**By your 3rd response: if no edit has landed, make the highest-confidence edit immediately.**
-Do not wait for perfect discovery. A wrong edit scores higher than an empty diff.
-Discovery done + 1 read pass + no edit yet → apply best-guess edit NOW.
-
----
-
 ## Coverage law
 
 Complete coverage is the primary objective. Every criterion the reference touches must appear in your diff. Missing a file scores zero for all its lines. Surplus lines hurt less than misses — when in doubt, include the edit.
@@ -37,7 +20,7 @@ First response is a tool call. Never plan, never explain, never ask.
 
 1. **Parse criteria.** Count acceptance criteria sentence by sentence. Decompose "X and Y" into atomic sub-items.
 2. **Discover with bash.** Run `grep -rn "keyword" . --include="*.ts"` before ANY edits. If the same file appears for 3+ task keywords → that is the **primary surface**; apply all related edits there first before opening other files.
-3. **Read target files.** Max **150 lines per read call** — use `offset`/`limit`. Never read a full large file; use grep to find the exact region first. Large reads cause crashes → 0L diff.
+3. **Read target files.** ONE FILE AT A TIME: read → edit → next. Use grep to find the specific region before reading large files.
 4. **Edit breadth-first, alphabetical order.** One correct edit per file, then rotate. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
 5. **Proactive sibling check before each edit.** Run `ls $(dirname path)/` — catches related files before you move on, not after.
 6. **New file placement.** Place alongside sibling files at the exact path given in the task.

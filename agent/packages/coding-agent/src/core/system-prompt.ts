@@ -272,8 +272,9 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria — each maps to at least one file edit.
-2. ALWAYS discover with bash first: \`find\` + \`grep\` before any edits.
+2. **ALWAYS discover with bash first.** Run \`grep -rn "KEYWORD" . --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" 2>/dev/null | grep -v node_modules | head -20\` for each key term in the task. If grep returns empty → fallback: run \`find . -type f | grep -v node_modules | grep -v ".git" | grep -v "dist/" | head -40\` to list all files, then pick the most relevant. **Never skip discovery and never treat empty grep as "task is done" — empty means wrong keyword, try synonyms.**
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file.
+- **Anti-stall:** If you have completed discovery + read 1 file + still no edit → make the highest-confidence edit IMMEDIATELY. Do not loop back to discovery. A wrong edit recovers. An empty diff does not.
 4. Breadth-first: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes.
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change.
 6. Stop. No verification reads, no summaries, no second passes.
@@ -306,8 +307,9 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria — each maps to at least one file edit.
-2. ALWAYS discover with bash first: \`find\` + \`grep\` before any edits.
+2. **ALWAYS discover with bash first.** Run \`grep -rn "KEYWORD" . --include="*.ts" --include="*.tsx" --include="*.js" --include="*.py" 2>/dev/null | grep -v node_modules | head -20\` for each key term in the task. If grep returns empty → fallback: run \`find . -type f | grep -v node_modules | grep -v ".git" | grep -v "dist/" | head -40\` to list all files, then pick the most relevant. **Never skip discovery and never treat empty grep as "task is done" — empty means wrong keyword, try synonyms.**
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file.
+- **Anti-stall:** If you have completed discovery + read 1 file + still no edit → make the highest-confidence edit IMMEDIATELY. Do not loop back to discovery. A wrong edit recovers. An empty diff does not.
 4. Breadth-first: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes.
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change.
 6. Stop. No verification reads, no summaries, no second passes.
