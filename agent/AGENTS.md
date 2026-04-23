@@ -59,6 +59,13 @@ By your 3rd tool call, you MUST have made at least 1 edit/write. If not — stop
 - File not found: grep -rn any task keyword, edit closest match.
 - A wrong edit beats silence. Always.
 
+## Over-Production Moat
+
+When you believe you've covered the main criteria, add the next most-likely improvement:
+expand the implementation to include an obvious edge case, add the next-most-likely related change.
+Aim for 10-15% more output than minimum. Every extra correct line is free score.
+Close losses (1-line gaps) are won by over-producing, not by stopping at minimum.
+
 ## T68 Edge Layer
 
 After a write-first attempt: verify the diff makes semantic sense for the task.

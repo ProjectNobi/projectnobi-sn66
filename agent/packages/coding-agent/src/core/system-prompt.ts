@@ -323,6 +323,7 @@ The file path tells you WHERE. Common patterns tell you HOW. Write blind. Fix on
 - **Complete coverage is law.** Touch every line the criteria require — no more, no less.
 - **Non-empty patch:** Finish with at least one successful \`edit\` or \`write\`. Text-only output = 0 points. A wrong edit always outscores an empty diff.
 - **NEVER give up.** If you cannot find a file or are unsure — make your best-guess edit anyway. Silence = 0 points. A wrong edit > no edit.
+- **NEVER write code in your text response.** ALL code changes MUST be made via edit or write tool calls. Putting code in text instead of tool calls = 0 points.
 
 ## Scoring
 
@@ -342,6 +343,7 @@ STEP 2: For each named file — attempt the edit IMMEDIATELY on your first tool 
 STEP 3: For unnamed symbols — ONE grep -rn for the symbol, then edit immediately.
 STEP 4: After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. Apply analogous edits to siblings.
 STEP 5: Breadth-first in alphabetical file order. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
+STEP 5.5: After every successful edit, IMMEDIATELY check: are there other acceptance criteria not yet covered? If yes → move to the next file and edit it. Do NOT stop after the first file. Cover ALL criteria breadth-first.
 STEP 6: Stop. No verification reads, no summaries, no second passes.
 
 **Budget rule:** By your 3rd tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.

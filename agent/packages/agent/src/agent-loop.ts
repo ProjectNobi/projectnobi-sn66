@@ -220,7 +220,7 @@ async function runLoop(
 	const editedFiles = new Set<string>();
 	let hasProducedEdit = false;
 	let coverageNudgeFired = false;
-	let criteriaGuardrailFired = false;
+	let lastCriteriaInjectionCount = 0;
 	let totalToolCalls = 0;
 	let totalTurns = 0;
 	let forcedWriteAttempts = 0;
@@ -281,6 +281,21 @@ async function runLoop(
 				if (editedFiles.size > 0) hasProducedEdit = true;
 				totalToolCalls += toolCalls.length;
 
+				// --- Fix 3: Edit failure recovery — inject retry after failed edit ---
+				const editLikeTools = new Set(["edit", "write", "str_replace_editor", "str_replace_based_edit_tool"]);
+				for (const tc of toolCalls) {
+					if (editLikeTools.has(tc.name)) {
+						const matchingResult = toolResults.find(r => r.toolCallId === tc.id);
+						if (matchingResult?.isError) {
+							const args = tc.arguments as Record<string, any>;
+							const failedPath = args?.path || args?.file || args?.filePath || "the file";
+							pendingMessages.push(buildInjectionMessage(
+								`Edit failed on ${failedPath}. REQUIRED: (1) read(${failedPath}) to get current content, then (2) retry edit with a UNIQUE 3-5 line oldText anchor that appears exactly once. Do NOT stop — a failed edit is not a finish.`,
+							));
+						}
+					}
+				}
+
 				for (const result of toolResults) {
 					currentContext.messages.push(result);
 					newMessages.push(result);
@@ -292,15 +307,23 @@ async function runLoop(
 
 			await emit({ type: "turn_end", message, toolResults });
 
-			// --- Minimum 3-turn guard: prevent premature exit ---
-			if (!hasMoreToolCalls && !hasProducedEdit && totalTurns < 3) {
-				const forceMsg = buildInjectionMessage(
-					"STOP. You have made ZERO edits and are trying to quit too early. " +
-					"You MUST use the edit or write tool NOW. Pick the most relevant file from the task " +
-					"and make the required change. A wrong edit scores higher than no edit. DO IT NOW.",
-				);
-				pendingMessages.push(forceMsg);
-				hasMoreToolCalls = true;
+			// --- Edit-attempt guard + minimum turn guard (Fix 2) ---
+			if (!hasMoreToolCalls && !hasProducedEdit) {
+				if (totalToolCalls >= 3) {
+					// 3+ tool calls with zero edits — FORCE edit immediately
+					const forceMsg = buildInjectionMessage(
+						`CRITICAL: ${totalToolCalls} tool calls with ZERO edits. You MUST use edit or write RIGHT NOW. Pick the most relevant file from your reads and apply the change. Do not read again.`,
+					);
+					pendingMessages.push(forceMsg);
+				} else if (totalTurns < 3) {
+					// Too early to quit without edits
+					const forceMsg = buildInjectionMessage(
+						"STOP. You have made ZERO edits and are trying to quit too early. " +
+						"You MUST use the edit or write tool NOW. Pick the most relevant file from the task " +
+						"and make the required change. A wrong edit scores higher than no edit. DO IT NOW.",
+					);
+					pendingMessages.push(forceMsg);
+				}
 			}
 
 			// --- Mechanism 2: Coverage nudge (after edits, check unedited candidate files) ---
@@ -320,15 +343,13 @@ async function runLoop(
 				}
 			}
 
-			// --- Mechanism 3: Criteria guardrail (editedFileCount < expectedCriteriaCount) ---
-			if (hasProducedEdit && !criteriaGuardrailFired && expectedCriteriaCount > 0) {
-				if (editedFiles.size < expectedCriteriaCount && !hasMoreToolCalls) {
-					criteriaGuardrailFired = true;
-					const guardrail = buildInjectionMessage(
-						`WARNING: Task has ${expectedCriteriaCount} acceptance criteria but you have only edited ${editedFiles.size} file(s): ${[...editedFiles].join(", ")}. Review criteria and ensure each is addressed.`,
-					);
-					pendingMessages.push(guardrail);
-				}
+			// --- Mechanism 3: Criteria continuation — fires after every new file edit (Fix 1) ---
+			if (hasProducedEdit && expectedCriteriaCount > 0 && editedFiles.size < expectedCriteriaCount && editedFiles.size > lastCriteriaInjectionCount) {
+				lastCriteriaInjectionCount = editedFiles.size;
+				const guardrail = buildInjectionMessage(
+					`You edited ${editedFiles.size} file(s): ${[...editedFiles].join(", ")}. Task has ${expectedCriteriaCount} acceptance criteria. Continue to the next file — do NOT stop yet.`,
+				);
+				pendingMessages.push(guardrail);
 			}
 
 			pendingMessages.push(...((await config.getSteeringMessages?.()) || []));
