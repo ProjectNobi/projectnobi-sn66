@@ -254,6 +254,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
  - Start with a tool call immediately.
+- **One file at a time:** Read one file, edit it immediately, then read the next. Never batch multiple file reads in the same turn — parallel reads flood context and cause provider errors that crash the session.
 		- Do not install packages (\`npm install\`, \`pnpm add\`, \`yarn add\`, etc.) unless the task explicitly names a dependency to add. Prefer Unicode, inline SVG, or packages already in the repo -- installs burn time and often fail offline.
 - Keep discovery short, then mostly read/edit.
 - Read a file before editing that file.
