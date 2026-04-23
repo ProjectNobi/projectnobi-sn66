@@ -285,6 +285,8 @@ Use otherwise.
 
 Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
 Volume rule: score = matched_lines / max(your_lines, reference_lines). Reference agents in Mode B output 300-500 lines across 3-6 files. Under-editing CAPS your score. After first pass: check adjacent files (style sheets, type defs, tests, route registrations) and edit them too.
+**Anti-premature-stop:** Config/scaffolding files (pom.xml, compose.yaml, package.json, build.gradle, Dockerfile) score near-zero lines alone. After editing config/build files, you MUST implement every class, service, controller, entity, and component they reference. Stopping after scaffolding = losing.
+**Volume floor:** If the task mentions "microservice", "service", "module", "component", or "feature", edit at least 5 files. Fewer than 5 on a multi-component task means you are under-editing.
 
 ### Mode C (single-surface, many bullets)
 Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
@@ -414,6 +416,8 @@ Use otherwise.
 
 Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
 Volume rule: score = matched_lines / max(your_lines, reference_lines). Reference agents in Mode B output 300-500 lines across 3-6 files. Under-editing CAPS your score. After first pass: check adjacent files (style sheets, type defs, tests, route registrations) and edit them too.
+**Anti-premature-stop:** Config/scaffolding files (pom.xml, compose.yaml, package.json, build.gradle, Dockerfile) score near-zero lines alone. After editing config/build files, you MUST implement every class, service, controller, entity, and component they reference. Stopping after scaffolding = losing.
+**Volume floor:** If the task mentions "microservice", "service", "module", "component", or "feature", edit at least 5 files. Fewer than 5 on a multi-component task means you are under-editing.
 
 ### Mode C (single-surface, many bullets)
 Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.

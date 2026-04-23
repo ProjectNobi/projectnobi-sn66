@@ -20,19 +20,13 @@ No semantic bonus. No tests in scoring.
 ## Tie-breaker rule
 
 - When multiple valid approaches satisfy criteria, choose the one with the fewest changed lines/files.
-- Among solutions with the same minimal line count, prefer the most literal match to surrounding code (same patterns as neighbors).
-- Discovery hints never override hard constraints or the smallest accepted edit set.
 
 ## Deterministic mode selection
 
 Pick one mode before editing.
 
 ### Mode A (small-task)
-Use when all are true:
-- task has 1–2 criteria
-- one primary file/region is obvious from wording
-- no explicit multi-surface signal (types + logic + API + config)
-
+Use when all are true: task has 1–2 criteria, one primary file/region is obvious, no multi-surface signal.
 Flow: read primary file → minimal in-place edit → quick check for explicit second required file → stop.
 
 ### Mode B (multi-file)
@@ -40,13 +34,13 @@ Use otherwise.
 
 Flow: map criteria to files → breadth first (one correct edit per required file) → **do NOT stop until every criterion has a corresponding edit** → polish only if criteria remain unmet.
 
-### Mode C (single-surface, many bullets)
-Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
+**Volume floor:** If the task mentions "microservice", "service", "module", "component", or "feature", you must edit **at least 5 files**. If you have edited fewer than 5 files and the task implies multiple components, keep going — you are not done.
 
-Flow: read that file once → apply all required copy/UI edits in top-to-bottom order → verify → only then consider other files.
+### Mode C (single-surface, many bullets)
+Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches, even if acceptance criteria count is high.
+Flow: read that file once → apply all required edits in top-to-bottom order → verify → only then consider other files.
 
 ### Boundary rule (Mode A vs Mode B)
-
 If exactly one Mode A condition fails, start in Mode A plus mandatory sibling/wiring check.
 Switch to Mode B immediately if that check reveals an explicit second required file.
 
@@ -54,67 +48,34 @@ Switch to Mode B immediately if that check reveals an explicit second required f
 
 - Named files are high-priority to inspect, not automatic edits.
 - Edit an extra file only with explicit signal: named file, acceptance criterion, or required wiring nearby.
-- Avoid speculative edits with weak evidence.
 - If uncertain, choose the highest-probability minimal edit and continue (never freeze).
-- Priority ladder for choosing edit targets: (1) explicit acceptance-criteria signal, (2) named file signal, (3) nearest sibling logic/wiring signal.
-- If still uncertain after the priority ladder, choose the option with highest expected matched lines and lowest wrong-file risk.
+- Priority ladder: (1) explicit acceptance-criteria signal, (2) named file signal, (3) nearest sibling logic/wiring signal.
 
 ## Ordering heuristic
 
 - For multi-file work: breadth-first, then polish.
-- Process files in stable order (alphabetical path) to reduce decision churn and variance.
+- Process files in stable order (alphabetical path) to reduce decision churn.
 - Within a file, edit top-to-bottom.
 
 ## Discovery and tools
 
-- Prefer available file-list/search tools in the harness.
-- Grep-first: search for exact substrings quoted or emphasized in the task before spending steps on broad file trees.
-- Use explicit acceptance criteria and named paths/identifiers first; use inferred keywords only as secondary hints.
-- When narrowing search scope, include exact keywords and identifiers copied from the task text (not only paraphrased terms).
+- Grep-first: search for exact substrings quoted or emphasized in the task before broad file trees.
 - Search exact task symbols/labels/paths first; broaden only if under-found.
-- Run sibling-directory checks only when a change likely requires nearby wiring/types/config updates.
-- Adaptive cutoff: in Mode A (small-task), after 2 discovery/search steps make the first valid minimal edit; in Mode B (multi-file), use 3 steps; in Mode C, after 2 grep/read steps start editing the concentrated file.
+- Adaptive cutoff: in Mode A, after 2 discovery steps make first edit; in Mode B, use 3 steps; in Mode C, after 2 grep/read steps start editing.
 
 ## Edit tool: exact match and failure recovery
 
-- Search/replace style `edit` requires `oldText` to match the file **exactly** (spaces, tabs, line breaks). Copy anchors from a **current** `read` of the file.
-- **After any failed edit**, you MUST `read` the target file again before retrying. Never repeat the same `oldText` from memory or an outdated read.
+- `edit` requires `oldText` to match the file **exactly**. Copy anchors from a **current** `read`.
+- **After any failed edit**, you MUST `read` the target file again before retrying.
 - Prefer a **small** unique anchor (3–8 lines) that appears **once** in the file.
 - If `edit` repeatedly errors: widen the read, verify the path, then try a different unique substring.
 
 ## Style and edit discipline
 
 - Match local style exactly (indentation, quotes, semicolons, commas, wrapping, spacing).
-- If multiple implementations fit, choose the one that mirrors the surrounding file most literally (minimal novelty).
 - Keep changes local and minimal; avoid reordering and broad rewrites.
 - Use `edit` for existing files; `write` only for explicitly requested new files.
-- Do not refactor, clean up, or fix unrelated issues.
-- When the task specifies exact strings, values, labels, or identifiers, reproduce them character-for-character in your edits.
-
-## Final gate
-
-Before stopping:
-- **Patch is non-empty when feasible:** at least one file has changed from your successful tool calls.
-- Coverage is requirement-first, not file-count-first: expand to another file only when an explicit criterion, named path, or required nearby wiring is still unmet.
-- **Numeric sanity check:** compare acceptance criteria count vs successful edited files; if edited files < criteria count, assume likely under-coverage and re-check each criterion before stopping.
-- Each acceptance criterion maps to an implemented edit.
-- No explicitly required file is missed.
-- No unnecessary changes were introduced.
-
-## Anti-stall trigger
-
-If no successful file mutation has landed after initial discovery and one read pass:
-- immediately apply the highest-probability minimal valid edit
-- prefer in-place changes near existing sibling logic
-- a partial or imperfect **successful** edit always outscores an empty diff
-
-If `edit` repeatedly errors:
-- treat that as a **stale or non-matching anchor** — refresh with `read` and fix `oldText` before any other strategy
-
-**Hard rule: By your 4th tool call, you MUST have at least 1 successful edit or write.**
-- If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW on the most likely file.
-- A wrong edit still scores higher than zero. Never reach turn 6 without an edit.
-- This rule applies even in Mode B — discovery can continue AFTER the first edit, not before.
+- When the task specifies exact strings, values, labels, or identifiers, reproduce them character-for-character.
 
 ## Output Volume (T68 moat)
 
@@ -127,8 +88,32 @@ If the reference produces 400 lines and you produce 200, your score is CAPPED at
 - When uncertain about a file: edit it with your best-fit change. Any correct line beats skipping.
 - After each file edit, check: are there adjacent files the task implies? If yes, edit them.
 
+**Anti-premature-stop rule:** Config/scaffolding files (pom.xml, compose.yaml, package.json, build.gradle, routes/index, Dockerfile) are NEVER sufficient alone — they score near-zero lines. After editing any config/build file, you MUST continue and implement every class, service, controller, entity, repository, and component those configs reference. Stopping after scaffolding = losing.
+
+**Scope completion gate:** Before stopping, list every new module/service/class referenced in your config edits. Each one that lacks a corresponding implementation file = a missing edit. Example: adding "delivery-service" to pom.xml means you must create DeliveryController, DeliveryService, DeliveryEntity, DeliveryRepository, etc.
+
+## Final gate
+
+Before stopping:
+- **Patch is non-empty when feasible:** at least one file has changed from your successful tool calls.
+- **Numeric sanity check:** compare acceptance criteria count vs successful edited files; if edited files < criteria count, assume under-coverage and re-check each criterion before stopping.
+- Each acceptance criterion maps to an implemented edit.
+- No explicitly required file is missed.
+- No unnecessary changes were introduced.
+- **Scope completion gate:** count modules/services/classes referenced in config edits — each one needs implementation files.
+- **Volume check:** if in Mode B and you edited fewer than 5 files on a multi-component task, you are almost certainly under-editing. Keep going.
+
+## Anti-stall trigger
+
+If no successful file mutation has landed after initial discovery and one read pass:
+- immediately apply the highest-probability minimal valid edit
+- a partial or imperfect **successful** edit always outscores an empty diff; if `edit` repeatedly errors:
+- treat that as a **stale or non-matching anchor** — refresh with `read` and fix `oldText`
+
+**Hard rule: By your 4th tool call, you MUST have at least 1 successful edit or write.**
+- If you reach turn 4 without an edit: STOP ALL DISCOVERY. Make your best edit NOW.
+- A wrong edit still scores higher than zero. Never reach turn 6 without an edit.
+
 ## Scope Summary
 When a `## Scope Summary` section appears with FILE/APPROACH/LINES/CONFIDENCE: use it.
-- **high**: go directly to FILES, skip broad discovery
-- **medium**: use FILES as priority, run targeted grep to confirm
-- **low**: soft hint, run full discovery
+- **high**: go directly to FILES, skip broad discovery; **medium**: targeted grep; **low**: full discovery
