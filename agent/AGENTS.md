@@ -6,24 +6,51 @@ Your diff is scored by byte-exact positional matching against a hidden reference
 
 Two loss modes:
 - **Surplus** — lines you wrote that aren't in the reference inflate the denominator.
-- **Misalignment** — missing a file/criterion the reference changed means all its lines lost.
+- **Misalignment** — missing a file/criterion means all its lines score zero.
 
-No diff = guaranteed loss. **Empty patches score worst.**
+---
+
+## ⚠️ EMPTY DIFF = ZERO SCORE. Worst outcome. Unrecoverable.
+
+**Never write a plan, description, or explanation. Every response is a tool call.**
+If you find yourself writing prose — STOP. Make an edit instead. Right now.
+
+---
+
+## Anti-stall rule
+
+**By your 3rd response: if no edit has landed, make the highest-confidence edit immediately.**
+Do not wait for perfect discovery. A wrong edit scores higher than an empty diff.
+Discovery done + 1 read pass + no edit yet → apply best-guess edit NOW.
+
+---
+
+## Coverage law
 
 Complete coverage is the primary objective. Every criterion the reference touches must appear in your diff. Missing a file scores zero for all its lines. Surplus lines hurt less than misses — when in doubt, include the edit.
+
+---
 
 ## Execution
 
 First response is a tool call. Never plan, never explain, never ask.
 
-1. Parse criteria. Count acceptance criteria sentence by sentence. Decompose compound criteria ("X and also Y") into atomic sub-items.
-2. **ALWAYS discover files with bash first.** Run `grep -rn "keyword" . --include="*.ts"` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Prefer files appearing for multiple keywords. Never skip this step.
-3. Read EVERY target file before editing. Read the full file, not just a function. Note style conventions exactly.
-4. Edit breadth-first in **alphabetical file order**. One correct change per file, then rotate. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never stack 3+ edits on one file while others remain untouched.
-5. New file placement. When creating a new file, place it alongside sibling files at the exact path given in the task.
-6. After each edit, check for sibling files: run `ls $(dirname path)/`. Catches files not found in pre-discovery.
-7. After last edit, walk the criterion checklist one more time.
-8. **Stop.** No verification reads, no summaries, no second passes.
+1. **Parse criteria.** Count acceptance criteria sentence by sentence. Decompose "X and Y" into atomic sub-items.
+2. **Discover with bash.** Run `grep -rn "keyword" . --include="*.ts"` before ANY edits. If the same file appears for 3+ task keywords → that is the **primary surface**; apply all related edits there first before opening other files.
+3. **Read target files.** Max **150 lines per read call** — use `offset`/`limit`. Never read a full large file; use grep to find the exact region first. Large reads cause crashes → 0L diff.
+4. **Edit breadth-first, alphabetical order.** One correct edit per file, then rotate. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
+5. **Proactive sibling check before each edit.** Run `ls $(dirname path)/` — catches related files before you move on, not after.
+6. **New file placement.** Place alongside sibling files at the exact path given in the task.
+
+---
+
+## Edit failure recovery
+
+After ANY failed edit → **re-read the file before retry**. Never retry the same `oldText` from memory — stale anchor = wasted turn = closer to empty diff.
+File not found → `grep -rn` any task keyword, edit closest match.
+**A wrong edit beats silence. An imperfect edit always outscores empty diff.**
+
+---
 
 ## Acceptance Criteria Discipline
 
@@ -31,35 +58,30 @@ First response is a tool call. Never plan, never explain, never ask.
 - If the task names multiple files, touch each named file.
 - "X and also Y" means both halves need edits.
 - Conditional logic requires an actual conditional in code.
-- Behavioral requirements require working logic, not just UI.
 - 4+ criteria almost always span 2+ files. Stopping early is wrong.
+
+---
 
 ## Precision
 
 - Narrowest replacement: token over line, line over block.
-- Literality rule — prefer the most boring, literal continuation of nearby code (same patterns, naming, and ordering as neighbors).
-- When appending to arrays or lists, add to the END — not mid-array (matches reference diff ordering).
-- Character-identical to local style — copy indentation, quotes, semicolons, trailing commas exactly.
-- Anchor with enough context for exactly one match — never more.
-- Preserve line wrapping, trailing newlines, EOF behavior.
-- Never reformat, reorder imports, rename variables, fix comments, or clean whitespace outside scope.
-- Data files (.json, config, env) and test files count in scoring — do not skip them.
-- No new files unless the task explicitly requires one. Add logic inline in existing files.
-- No exploratory reads. Do not re-read a file unless an edit failed against it.
-- No README, package.json, tsconfig reads unless the task names them. DO read data/config/test files discovered during search.
-- No test runs, builds, linters, formatters, type checkers, or git commands.
+- Literality — copy indentation, quotes, semicolons, trailing commas exactly from neighbors.
+- Append to arrays at the END. Preserve line wrapping, trailing newlines, EOF behavior.
+- Never reformat, reorder imports, rename variables, or clean whitespace outside scope.
+- Data files (.json, config, env) and test files count — do not skip them.
 
-## Edit failure recovery
+---
 
-Edit rejected → re-read the file once, retry with corrected oldText. Never retry from memory.
-File not found → grep -rn any task keyword, edit closest match.
-Multiple failures → widen the read, verify the path, try a different unique substring.
-**A wrong edit beats silence. An imperfect edit always outscores empty diff.**
+## Final gate (before stopping)
+
+1. **Criteria vs edits:** count acceptance criteria, count files edited. If edited files < criteria count → you missed something. Re-check each criterion.
+2. **Non-empty check:** at least one edit must have succeeded. If not — read and retry until one lands.
+3. **Each criterion maps to an edit.** Walk the list one time.
+
+Then **stop**. No verification reads, no summaries, no second passes. The harness reads the diff.
+
+---
 
 ## Ambiguity
 
-Narrower interpretation. Surgical fix over refactor. Omit defensive checks. When uncertain, leave unchanged.
-
-## Completion
-
-Smallest diff addressing every criterion. No prose. The harness reads the diff.
+Narrower interpretation. Surgical fix over refactor. When uncertain, leave unchanged.
