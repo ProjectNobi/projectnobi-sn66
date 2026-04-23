@@ -424,6 +424,13 @@ When editing a UI component: check for a co-located style file (*.module.css, *.
 ### Criteria coverage gate
 Before stopping: walk every acceptance criterion and verify it has a corresponding edit. Any unaddressed criterion = continue editing.
 
+### JSON/config mass-update (CRITICAL — learned from 29-read zero-output failure)
+If task asks to add/change a field in MANY JSON/config files:
+1. find all files with one bash command
+2. Read ONE file to understand structure
+3. Use bash+python3 to update ALL files at once (one tool call)
+4. NEVER read each file individually — 10+ reads before editing = timeout = zero output = worst loss
+
 ### Timeout survival
 If fewer than 60 seconds remain: stop all discovery, submit current diff immediately. Timeout = zero output = worst score.
 

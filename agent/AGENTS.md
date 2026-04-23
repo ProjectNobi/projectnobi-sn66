@@ -2,7 +2,7 @@
 
 score = matched_lines / max(your_diff_lines, reference_diff_lines)
 
-Matching is byte-exact at each diff position. No semantic credit. No test execution. Every surplus line inflates the denominator; every misaligned line scores zero.
+Matching is byte-exact at each diff position. No semantic credit. No test execution.
 
 ## Output Volume Rule (CRITICAL)
 
@@ -23,12 +23,31 @@ If the reference produces 400 lines and you produce 200, your score is CAPPED at
 
 Coverage over perfection. Missing a file is catastrophic. Extra lines only inflate the denominator.
 
+## TURN-BY-TURN EDIT DISCIPLINE (learned from 10 harness rounds)
+
+**TURN 1: Call a tool. Never text. Always a tool call.**
+- This is your first tool call. No planning text. Call grep, find, read, or bash.
+
+**BY TURN 3: You MUST have at least 1 successful edit or write.**
+- If you reach turn 3 without an edit: STOP ALL DISCOVERY. Make your best edit NOW on the most likely file.
+- A wrong edit still scores higher than zero. Never reach turn 5 without an edit.
+
+**BATCH READS = DEATH (learned: 29-read round = zero output)**
+- Never read more than 3 files before making your first edit.
+- For JSON/config tasks with many files: read ONE example file, write the pattern for ALL others. Do NOT read each individually.
+- Pattern: read 1 → edit 1 → read 2 → edit 2 → ... NEVER read-read-read-edit.
+
+**EDIT COUNT TARGET:**
+- Mode A tasks: ≥1 edit
+- Mode B tasks: ≥3 edits (one per criterion-file pair)
+- JSON/config mass-update tasks: use bash to generate edits or write each file directly
+
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each maps to at least one edit.
 2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
 3. **Map criteria to files.** Every criterion must point to a target file before you start editing. Fewer target files than criteria = still missing files — grep more.
-4. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
+4. **Read-edit pipeline (CRITICAL).** Read file A → edit file A → read file B → edit file B. Never batch all reads first.
 5. **No narration.** Never output a text-only turn describing what you plan to do — call the tool directly. Planning text is a wasted turn.
 6. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes. **When done with first pass: ask yourself — are there adjacent files (sibling components, style sheets, test files, route registrations, type definitions) the task implies? If yes, edit them. More correct files = higher score.**
 7. **Apply the edit** with precise surrounding-context anchors. Never anchor on closing braces alone, blank lines, or common import patterns.
@@ -44,7 +63,13 @@ Coverage over perfection. Missing a file is catastrophic. Extra lines only infla
 → Broad grep: `grep -rn 'keyword1\|keyword2\|keyword3' --include='*.ext' -l . | head -30`
 → Search every named identifier, symbol, and keyword from the task.
 → Follow with `find` for config, test, route files in task-relevant directories.
-→ Max 4 discovery tool calls, then start editing immediately.
+→ Max 3 discovery tool calls, then start editing immediately.
+
+**JSON/config mass-update tasks (e.g., "add field to all X.json files"):**
+→ Run `find . -name "*.json" -path "*/pattern/*"` to list all files.
+→ Read ONE file to understand structure.
+→ Use bash to add the field to ALL files in one command, OR write each file with `write`.
+→ DO NOT read each file individually — that consumes all turns before any edits.
 
 **If grep finds nothing:**
 → Edit the most-mentioned file in the task text with the narrowest plausible change. Any line outscores zero.
@@ -85,7 +110,8 @@ Before stopping, verify every criterion maps to an edit:
 - Any matched line outscores an empty diff. When in doubt: edit.
 - Never output a text-only turn — call the tool directly. Planning text = zero output.
 - If fewer than 60 seconds remain: stop all discovery, submit current diff immediately.
-- 4 tool calls with no edits produced: stop investigating and write your best edit NOW.
+- **Hard rule: By your 3rd tool call, you must have at least 1 successful edit.** If not: make your best guess edit on the most likely file RIGHT NOW.
+- For mass JSON updates: use `bash` with `sed` or `python3 -c` to update all files in ONE tool call.
 
 ## Ambiguity Resolution
 
