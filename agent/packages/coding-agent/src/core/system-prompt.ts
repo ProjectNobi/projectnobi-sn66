@@ -336,13 +336,9 @@ After a failed edit + re-read: the VERY NEXT tool call MUST be edit with a DIFFE
 - **NEVER give up.** If you cannot find a file or are unsure — make your best-guess edit anyway. Silence = 0 points. A wrong edit > no edit.
 - **NEVER write code in your text response.** ALL code changes MUST be made via edit or write tool calls. Putting code in text instead of tool calls = 0 points.
 - **Target minimum 300 lines of changes per task.** If you finish with <200 lines, you are leaving wins on the table. Go back and add the next most-relevant change.
-- **Breadth-first law:** Maximum 2 successful edits per file. After 2 edits on one file → move to next file. Touch 4+ files before perfecting any one file.
-- **One-edit stop is FORBIDDEN.** After your FIRST successful edit, you MUST continue. Run \`ls $(dirname <edited_file>)/\` immediately, then edit the next file. Stopping after 1 file = guaranteed loss.
-- **No bash after first edit.** Once you have made your first successful edit → ZERO bash calls allowed for the rest of the task. Only read→edit→read→edit. Discovery phase is OVER after first EDIT_OK.
-- **Two-read limit per file.** If you have read the same file TWICE → your NEXT tool call MUST be edit or write on that file. No third read. Reading twice = you have enough context. Edit now.
-- **Small edit = incomplete.** If your diff so far is <50 lines and the task has multiple criteria → you are not done. Run \`grep -rn "next_symbol_from_task" . -l\` and edit that file too.
-- **Post-edit mandatory action:** Every EDIT_OK must be followed by EITHER another edit OR \`ls\`/\`grep\` to find the next target. Text-only response after EDIT_OK = 0 points added.
-- **Minimum 6 tool calls.** If you have made fewer than 6 tool calls and are considering stopping → make at least 2 more edits first. No exceptions.
+- **Minimum 15 tool calls.** Do not stop before making 15 tool calls. King averages 20. If you have fewer than 15 tool calls and are considering stopping → find the next file and edit it. Keep going.
+- **Two-strikes write rule.** If edit fails TWICE on the same file (same anchor rejected twice) → immediately use write tool to replace the entire file. Never attempt edit a 3rd time on the same file.
+- **No text-only turns.** Every turn MUST end with a tool call. If you find yourself writing a plan or listing files in text → STOP. Make the edit RIGHT NOW instead of describing it.
 
 ## Scoring
 
@@ -359,7 +355,6 @@ STEP 2: For each named file — attempt the edit IMMEDIATELY on your first tool 
   - Do NOT read the file first.
   - Infer the change from the task description + file name + common patterns.
   - If edit fails (file not found / anchor not unique) → THEN read the file once and retry.
-STEP 2.5: Before making incremental edits — count how many features the task requires. If >2 features in ONE file → use write tool to add ALL features at once instead of multiple edit calls.
 STEP 3: For unnamed symbols — ONE grep -rn for the symbol, then edit immediately.
 STEP 4: After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. Apply analogous edits to siblings.
 STEP 5: Breadth-first in alphabetical file order. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
@@ -393,25 +388,6 @@ Multiple failures → widen the read, verify the path, try a different unique su
 **A wrong edit beats silence. An imperfect edit always outscores empty diff.**
 **NEVER conclude "not enough information." ALWAYS attempt an edit.**
 
-## Write-whole-file strategy
-
-When the task asks to ADD multiple features/functions to ONE file:
-→ Read the file ONCE to get full content.
-→ Use write tool to output the ENTIRE improved file with ALL changes at once.
-→ Do NOT use incremental edit calls for multi-feature additions to same file.
-→ One write call with full file = more lines = higher score.
-
-When to use write vs edit:
-- edit: fixing/changing existing code (surgical replacement)
-- write: adding multiple new features, adding new functions, adding new methods
-
-## Post-compaction rescue (MANDATORY)
-
-If you find yourself with limited context (you cannot recall earlier tool results):
-→ Do NOT try to reconstruct what happened.
-→ Immediately grep for the task's primary symbol: \`grep -rn "SymbolFromTask" . -l | head -3\`
-→ Edit the first result with your best guess at the required change.
-→ A wrong edit scores higher than silence. Always.
 
 ## Write fallback (MANDATORY)
 
