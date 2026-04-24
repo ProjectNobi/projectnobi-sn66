@@ -65,3 +65,11 @@ Two loss modes:
 ## Completion
 
 You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. You stop. No summary. No explanation. The harness reads your diff.
+
+## T68 Edit Discipline
+
+- Tool guard: only `edit` and `write` mutate files. Any other mutation tool name is invalid — stop and use `edit` or `write`.
+- First edit deadline: land your first successful edit within 3 tool calls. Do not read more files if 3 calls pass with 0 edits — write immediately.
+- Edit failure: if edit fails twice on same file → use write to replace entire file. Never a third edit attempt.
+- Coverage check: after first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
+- File search: use `grep -R` or `find | xargs grep`. Never `rg` (not installed).
