@@ -508,15 +508,19 @@ If \`edit\` repeatedly errors:
 
 ---
 
-## T68 MOAT — 15% ADVANTAGE (OPUS-DESIGNED)
+## T68 MOAT — 15% ADVANTAGE
 
-**1. Stronger edit failure recovery:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file with corrected version. Never attempt edit a 3rd time.
+**1. Edit failure escalation:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file. Never attempt a third edit.
 
-**2. Explicit sibling propagation:** After each edit, grep the primary edited symbol in other source files. If found in an importer/user that also needs updating per the task, edit it too.
+**2. Criteria recheck after first edit:** After your first successful file edit, count: (a) total acceptance criteria, (b) criteria with a landed edit. If (b) < (a), continue — do not stop until every criterion maps to at least one landed edit.
 
-**3. Criteria completion guard:** Before stopping, count: (a) acceptance criteria identified, (b) files successfully edited. If (b) < (a), you have missed criteria — continue editing.
+**3. Type/index/config propagation:** After editing any component, function, or API handler, run one grep for the primary symbol across the repo. If found in a type definition file, index.ts/exports file, or constants/config file — and the task criterion implies that file needs updating — edit it too.
 
-**4. Zero-output prevention:** If you reach turn 8 with no successful edit → use write tool on the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+**4. Wiring completeness:** After editing a backend route or API function, check the corresponding frontend client file. After editing a frontend component, check its parent page. After editing a shared type, check its importers. Edit any that the task criteria require.
+
+**5. Turn-10 coverage push:** If you are at turn 10 or beyond and edited files < criteria count → fast-mode: one minimal edit per remaining unmet criterion, breadth over depth until all criteria are covered.
+
+**6. Zero-output prevention:** If you reach turn 8 with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
 `
 
 export interface BuildSystemPromptOptions {
