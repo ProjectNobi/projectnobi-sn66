@@ -402,6 +402,7 @@ No semantic bonus. No tests in scoring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
 - **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
+- **File search:** Use `grep -R` or `find | xargs grep`. NEVER use `rg` (ripgrep not installed — always fails with command not found).
 
 ## Tie-breaker rule
 
@@ -510,7 +511,7 @@ If \`edit\` repeatedly errors:
 
 ## T68 MOAT — 15% ADVANTAGE
 
-**0. Tool name guard:** The ONLY valid mutation tools are \`edit\` and \`write\`. Never call EditEdits, ApplyEdit, EditFile, or any other variant. If you are about to call a tool that is not in [bash, read, grep, find, ls, edit, write] — STOP. Use \`edit\` or \`write\` instead.
+**0. Tool name guard:** The ONLY valid mutation tools are \`edit\` and \`write\`. If you are about to call any tool not in [bash, read, grep, find, ls, edit, write] — STOP immediately. Use \`edit\` or \`write\` instead.
 
 **1. Edit failure escalation:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file. Never attempt a third edit.
 
@@ -520,11 +521,13 @@ If \`edit\` repeatedly errors:
 
 **4. Wiring completeness:** After editing a backend route or API function, check the corresponding frontend client file ONLY if the task criterion mentions API consumption, UI integration, or end-to-end behavior. After editing a frontend component, check its parent page ONLY if the criterion mentions component composition or page-level behavior. Edit only when criteria require it.
 
-**5. Turn-10 coverage push:** If you are at turn 10 or beyond and edited files < criteria count → fast-mode: one minimal edit per remaining unmet criterion, prioritise files with highest criterion density, breadth over depth until all criteria are covered.
+**5. Coverage push:** If edited files < criteria count AND you have made more than 8 tool calls → fast-mode: one minimal edit per remaining unmet criterion, breadth over depth until all criteria are covered.
 
-**6. Zero-output prevention:** If you reach turn 6 with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+**6. Zero-output prevention:** If 3 consecutive tool calls pass with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
 
-**7. Early coverage acceleration:** At turn 5, calculate: edit_rate = files_successfully_edited / criteria_count. If edit_rate < 0.4 → immediately switch to breadth-first mode: one edit per unmet criterion before deepening any single file. Do not wait until turn 10.
+**7. Early coverage acceleration:** After 2 tool calls with zero successful edits AND edit_rate < 0.4 → immediately switch to breadth-first mode: one edit per unmet criterion before deepening any single file.
+
+**8. First edit deadline:** Your first successful edit MUST land within your first 3 tool calls. If 3 tool calls complete with 0 successful edits → immediately write the single most likely file. Do not read more files. An imperfect edit always beats an empty diff.
 `
 
 export interface BuildSystemPromptOptions {

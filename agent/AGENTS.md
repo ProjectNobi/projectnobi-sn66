@@ -16,7 +16,7 @@ Two loss modes:
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
+2. **Discover files before editing — follow Mode A/B/C cutoff.** Mode A (small task): 2 discovery steps then first edit immediately. Mode B/C: up to 3 discovery steps. Use `find` + `grep -R` (NEVER `rg`). Pre-identified files may be incomplete — but do NOT over-discover. First edit must land within 3 tool calls.
 3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
