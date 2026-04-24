@@ -160,7 +160,10 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 			} catch { }
 		}
 
-		if (fileHits.size === 0 && literalPaths.length === 0) return "";
+		if (fileHits.size === 0 && literalPaths.length === 0) {
+			// No keyword matches — return a fallback hint so agent isn't flying blind
+			return "\n\nDISCOVERY HINT: No keyword matches found in repo. Strategy: (1) run `find . -type f -name '*.ts' -o -name '*.js' -o -name '*.py' -o -name '*.css' -o -name '*.html' | grep -v node_modules | grep -v dist | head -20` to list candidate files, (2) grep for the most specific phrase from the task, (3) pick the first result and write your best-guess implementation immediately. Do NOT read multiple files — one grep, then write.\n";
+		}
 
 		const sorted = [...fileHits.entries()].sort((a, b) => b[1].size - a[1].size).slice(0, 15);
 		const sections: string[] = [];
@@ -356,7 +359,7 @@ Then stop immediately.
 
 ## Anti-stall trigger
 
-If no successful file mutation has landed after initial discovery and one read pass:
+If no successful file mutation has landed after ANY 2 tool calls:
 - immediately apply the highest-probability minimal valid edit
 - prefer in-place changes near existing sibling logic
 - avoid additional exploration loops
@@ -522,7 +525,7 @@ Then stop immediately.
 
 ## Anti-stall trigger
 
-If no successful file mutation has landed after initial discovery and one read pass:
+If no successful file mutation has landed after ANY 2 tool calls:
 - immediately apply the highest-probability minimal valid edit
 - prefer in-place changes near existing sibling logic
 - avoid additional exploration loops
@@ -538,7 +541,7 @@ If \`edit\` repeatedly errors:
 
 **0. Tool name guard:** The ONLY valid mutation tools are \`edit\` and \`write\`. If you are about to call any tool not in [bash, read, grep, find, ls, edit, write] — STOP immediately. Use \`edit\` or \`write\` instead.
 
-**1. Edit failure escalation:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file. Never attempt a third edit.
+**1. Edit failure escalation:** If edit fails ONCE on the same file after re-read → immediately use write tool to replace the entire file with your best implementation. Never attempt a second edit on the same file. Time is the enemy — write is always faster than debugging an anchor.
 
 **2. Criteria recheck after first edit:** After your first successful file edit, count: (a) total acceptance criteria, (b) criteria with a landed edit. If (b) < (a), continue — do not stop until every criterion maps to at least one landed edit.
 
