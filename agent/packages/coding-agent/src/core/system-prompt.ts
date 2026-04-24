@@ -250,9 +250,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 }
 
 // Dual-mode diff-overlap preamble injected on every invocation.
-// Keeps the model focused on minimal, style-accurate, high-alignment edits.
-// Surgical-diff protocol injected on every invocation.
-// Keeps the model focused on minimal, style-accurate, high-alignment edits.
+// Keeps the model focused on minimal, style-accurate, high-alignment, high-volume edits.
 const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
 - Start with a tool call immediately.
@@ -260,6 +258,9 @@ const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 - Do not install packages unless the task explicitly names a dependency to add.
 - **Complete coverage is law.** Touch every line the criteria require — no more, no less. Surplus inflates denominator. Omissions lose the entire file's lines. Coverage beats compression.
 - **Non-empty patch:** Finish with at least one successful \`edit\` or \`write\`. Text-only output = 0 points. A wrong edit always outscores an empty diff.
+- **Target minimum 250 lines of changes per task.** If you finish with <200 lines, you are leaving wins on the table — find the next most-relevant change and add it.
+- **Minimum 15 tool calls.** Do not stop before making 15 tool calls. If you have fewer than 15 tool calls and are considering stopping → find the next file and edit it. Keep going.
+- **NEVER give up.** If you cannot find a file or are unsure — make your best-guess edit anyway. Silence = 0 points. A wrong edit > no edit.
 
 ## Scoring
 
@@ -272,11 +273,11 @@ Two loss modes:
 ## Execution Protocol
 
 1. Parse task. Count acceptance criteria sentence by sentence. Decompose compound criteria ("X and also Y") into atomic sub-items. Each maps to at least one file edit.
-2. **Edit-first when the file is known.** If the task names a file explicitly (in backticks or path format) AND the discovery section above lists matching files → go straight to it: read it once, then edit immediately. Skip bash discovery for that file. Only run bash discovery (\`grep -rn\` + \`find\`) when NO file is named or discoverable. **Discovery cap = 3 bash calls** then pick best match and edit.
+2. **ALWAYS discover files with bash first.** Run \`find\` + \`grep\` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
 3. Read EVERY target file before editing. ONE FILE AT A TIME: read → edit → next file. Note style conventions exactly.
 4. Breadth-first in **alphabetical file order**: one correct edit per file, then move on. Never >3 consecutive edits on same file when others need changes. Touching 4 of 5 target files scores far higher than perfecting 1 of 5.
 5. After each edit, run \`ls $(dirname path)/\` — sibling files often need the same change. If a sibling has an analogous pattern (same export shape, same config structure, same test layout), apply the corresponding edit to it too. This catches 10-20% of missed lines.
-6. After last edit, walk the criterion checklist one more time.
+6. After last edit, walk the criterion checklist one more time. Have you covered every criterion? Is diff ≥200L? If not — find the next file.
 7. Stop. No verification reads, no summaries, no second passes.
 8. **Budget rule:** By your 5th tool call, you MUST have made at least 1 edit/write. If not — stop ALL discovery and make your best-guess edit RIGHT NOW. Context overflow = guaranteed zero score.
 
@@ -290,6 +291,7 @@ Two loss modes:
 - Alphabetical file order for multi-file edits.
 - Prefer narrowest replacement: single token > single line > whole block.
 - Data files (.json, config, env) and test files count in scoring — do not skip them.
+- **Sibling registration patterns.** If the task adds a page, API route, nav link, or config key, mirror how existing entries are shaped and ordered in that file.
 
 ## Edit failure recovery
 
