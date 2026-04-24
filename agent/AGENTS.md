@@ -16,7 +16,7 @@ Two loss modes:
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **Discover files before editing — follow Mode A/B/C cutoff.** Mode A (small task): 2 discovery steps then first edit immediately. Mode B/C: up to 3 discovery steps. Use `find` + `grep -R` (NEVER `rg`). Pre-identified files may be incomplete — but do NOT over-discover. First edit must land within 3 tool calls.
+2. **Discover files before editing — follow Mode A/B/C cutoff.** Mode A (small task): 2 discovery steps then first edit immediately. Mode B/C: up to 3 discovery steps. Use `find` + `grep -R` (NEVER `rg`). Pre-identified files may be incomplete — but do NOT over-discover. First edit must land within 3 tool calls. For mass-edit tasks (same change across many files), emit multiple `edit` calls in ONE response — batching 5-6 files per turn maximizes coverage before timeout.
 3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
@@ -70,6 +70,7 @@ You have applied the smallest diff that literally satisfies the task wording and
 
 - Tool guard: only `edit` and `write` mutate files. Any other mutation tool name is invalid — stop and use `edit` or `write`.
 - First edit deadline: land your first successful edit within 2 tool calls. Do not read more files if 2 calls pass with 0 edits — write immediately.
+- Small anchor discipline: prefer `oldText` of 5-20 lines per edit entry. Split large changes into 3-5 smaller targeted edits rather than one 50+ line mega-edit.
 - Edit failure: if edit fails twice on same file → use write to replace entire file. Never a third edit attempt.
 - Coverage check: after first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
 - File search: use `grep -R` or `find | xargs grep`. Never `rg` (not installed).
