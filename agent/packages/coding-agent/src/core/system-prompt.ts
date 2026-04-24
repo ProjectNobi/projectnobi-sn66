@@ -402,7 +402,7 @@ No semantic bonus. No tests in scoring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
 - **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
-- **File search:** Use `grep -R` or `find | xargs grep`. NEVER use `rg` (ripgrep not installed — always fails with command not found).
+- **File search:** Use \`grep -R\` or \`find | xargs grep\`. NEVER use \`rg\` (ripgrep not installed — always fails with command not found).
 
 ## Tie-breaker rule
 
