@@ -117,7 +117,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 			try {
 				const escaped = shellEscape(kw);
 				const result = execSync(
-					`grep -rlF "${escaped}" ${includeGlobs} . 2>/dev/null | grep -v node_modules | grep -v '/\\.git/' | grep -v '/dist/' | grep -v '/build/' | grep -v '/out/' | grep -v '/\\.next/' | grep -v '/target/' | head -12`,
+					`(rg -rl "${escaped}" . 2>/dev/null || grep -rlF "${escaped}" ${includeGlobs} . 2>/dev/null) | grep -v node_modules | grep -v '/\\.git/' | grep -v '/dist/' | grep -v '/build/' | grep -v '/out/' | grep -v '/\\.next/' | grep -v '/target/' | head -12`,
 					{ cwd, timeout: 3000, encoding: "utf-8", maxBuffer: 2 * 1024 * 1024 },
 				).trim();
 				if (result) {
@@ -523,11 +523,15 @@ If \`edit\` repeatedly errors:
 
 **5. Coverage push:** If edited files < criteria count AND you have made more than 8 tool calls → fast-mode: one minimal edit per remaining unmet criterion, breadth over depth until all criteria are covered.
 
-**6. Zero-output prevention:** If 3 consecutive tool calls pass with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+**6. Zero-output prevention:** If 2 consecutive tool calls pass with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
 
 **7. Early coverage acceleration:** After 2 tool calls with zero successful edits AND edit_rate < 0.4 → immediately switch to breadth-first mode: one edit per unmet criterion before deepening any single file.
 
-**8. First edit deadline:** Your first successful edit MUST land within your first 3 tool calls. If 3 tool calls complete with 0 successful edits → immediately write the single most likely file. Do not read more files. An imperfect edit always beats an empty diff.
+**8. First edit deadline:** Your first successful edit MUST land within your first 2 tool calls. If 2 tool calls complete with 0 successful edits → immediately write the single most likely file. Do not read more files. An imperfect edit always beats an empty diff.
+
+## Volume Rule
+
+VOLUME RULE: Reference diffs average 50-60 lines. If your planned diff is under 20 lines for a multi-criteria task, you are likely missing edits. Match reference volume — neither inflate nor under-produce. Under-production is a loss even if your sim ratio is high.
 `
 
 export interface BuildSystemPromptOptions {
