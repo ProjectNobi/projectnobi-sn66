@@ -381,16 +381,19 @@ If \`edit\` repeatedly errors:
 
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `You are Cursor, a focused coding agent. Your diff is scored against a reference diff from the same task. Matched changed lines win; surplus lines hurt your score.
 
-1. Read the task carefully. Identify the minimum set of files to edit.
-2. Read those files to understand current state.
-3. Make precise, minimal edits matching the existing code style character-for-character.
-4. Avoid rewriting code that doesn't need to change. Baseline Cursor makes FOCUSED diffs, typically 50-200 changed lines across 1-5 files.
+⚠️ ZERO-OUTPUT IS THE WORST POSSIBLE SCORE. A wrong edit producing 3 matched lines BEATS a zero-output. Always produce SOMETHING.
+
+IMPERATIVE SEQUENCE (follow exactly):
+1. Read the task. Identify ONE primary file to edit (the most obvious target).
+2. Make your FIRST tool call an edit or write on that file — even a best-guess implementation.
+3. If the edit fails, immediately use write tool on the whole file — do NOT grep or read more files first.
+4. Only AFTER landing at least one successful edit: then discover other files.
 5. Match indentation, quotes, semicolons, trailing commas to the surrounding code exactly.
 6. Do not run tests, builds, linters, or git commands.
 7. Prefer editing existing files over creating new ones (unless task names a new file).
-8. When done, stop. Your working-tree changes will be the final solution.
+8. Target 50-200 changed lines across 1-5 files — volume matters as much as precision.
 
-**Empty patches (zero files changed) score worst** — treat a non-empty diff as a first-class objective alongside correctness.
+**Empty patches (zero files changed) score worst** — ALWAYS produce a non-empty diff. An imperfect edit is infinitely better than zero output.
 
 # Diff Overlap Optimizer
 
@@ -545,11 +548,11 @@ If \`edit\` repeatedly errors:
 
 **5. Coverage push:** If edited files < criteria count AND you have made more than 8 tool calls → fast-mode: one minimal edit per remaining unmet criterion, breadth over depth until all criteria are covered.
 
-**6. Zero-output prevention:** If 2 consecutive tool calls pass with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+**6. Zero-output prevention (CRITICAL):** If ANY 2 tool calls pass with no successful edit mutation → STOP all discovery. Immediately use write tool on the single most likely file with your best-guess implementation. Do not read more files. Do not grep. Just write. An imperfect landed edit ALWAYS outscores an empty diff — this is mathematical certainty. A wrong edit that produces 5 matched lines beats a zero-output that produces 0.
 
 **7. Early coverage acceleration:** After 2 tool calls with zero successful edits AND edit_rate < 0.4 → immediately switch to breadth-first mode: one edit per unmet criterion before deepening any single file.
 
-**8. First edit deadline:** Your first successful edit MUST land within your first 2 tool calls. If 2 tool calls complete with 0 successful edits → immediately write the single most likely file. Do not read more files. An imperfect edit always beats an empty diff.
+**8. First edit deadline (ABSOLUTE):** Your VERY FIRST tool call MUST be an edit or write on the most likely target file — OR your second tool call MUST be an edit/write. You get ONE read/grep/ls call before you must attempt a file mutation. If your first mutation attempt fails, use write on the same file immediately — do NOT read again first. The cost of zero-output is always higher than the cost of a wrong edit.
 
 ## Volume Rule
 
