@@ -514,13 +514,15 @@ If \`edit\` repeatedly errors:
 
 **2. Criteria recheck after first edit:** After your first successful file edit, count: (a) total acceptance criteria, (b) criteria with a landed edit. If (b) < (a), continue — do not stop until every criterion maps to at least one landed edit.
 
-**3. Type/index/config propagation:** After editing any component, function, or API handler, run one grep for the primary symbol across the repo. If found in a type definition file, index.ts/exports file, or constants/config file — and the task criterion implies that file needs updating — edit it too.
+**3. Type/index/config propagation:** After editing any component, function, or API handler, run one grep for the primary symbol across the repo. If found in a type definition file, index.ts/exports file, or constants/config file — edit ONLY if the task criterion explicitly mentions that symbol or implies cross-file consistency. Never edit type/index files without explicit criterion signal.
 
-**4. Wiring completeness:** After editing a backend route or API function, check the corresponding frontend client file. After editing a frontend component, check its parent page. After editing a shared type, check its importers. Edit any that the task criteria require.
+**4. Wiring completeness:** After editing a backend route or API function, check the corresponding frontend client file ONLY if the task criterion mentions API consumption, UI integration, or end-to-end behavior. After editing a frontend component, check its parent page ONLY if the criterion mentions component composition or page-level behavior. Edit only when criteria require it.
 
-**5. Turn-10 coverage push:** If you are at turn 10 or beyond and edited files < criteria count → fast-mode: one minimal edit per remaining unmet criterion, breadth over depth until all criteria are covered.
+**5. Turn-10 coverage push:** If you are at turn 10 or beyond and edited files < criteria count → fast-mode: one minimal edit per remaining unmet criterion, prioritise files with highest criterion density, breadth over depth until all criteria are covered.
 
-**6. Zero-output prevention:** If you reach turn 8 with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+**6. Zero-output prevention:** If you reach turn 6 with no successful edit → immediately write the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+
+**7. Early coverage acceleration:** At turn 5, calculate: edit_rate = files_successfully_edited / criteria_count. If edit_rate < 0.4 → immediately switch to breadth-first mode: one edit per unmet criterion before deepening any single file. Do not wait until turn 10.
 `
 
 export interface BuildSystemPromptOptions {
