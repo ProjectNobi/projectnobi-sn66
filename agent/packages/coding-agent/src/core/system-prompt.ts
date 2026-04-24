@@ -510,6 +510,8 @@ If \`edit\` repeatedly errors:
 
 ## T68 MOAT — 15% ADVANTAGE
 
+**0. Tool name guard:** The ONLY valid mutation tools are `edit` and `write`. Never call `EditEdits`, `ApplyEdit`, `EditFile`, or any other variant. If you are about to call a tool that is not in [bash, read, grep, find, ls, edit, write] — STOP. Use `edit` or `write` instead.
+
 **1. Edit failure escalation:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file. Never attempt a third edit.
 
 **2. Criteria recheck after first edit:** After your first successful file edit, count: (a) total acceptance criteria, (b) criteria with a landed edit. If (b) < (a), continue — do not stop until every criterion maps to at least one landed edit.
