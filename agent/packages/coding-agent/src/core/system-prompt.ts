@@ -260,12 +260,12 @@ const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
+- **Non-empty patch (MANDATORY):** If the task asks you to implement, fix, add, or change code/config behavior, you MUST finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
 
 ## Tie-breaker rule
 
-- When multiple valid approaches satisfy criteria, choose the one with the fewest changed lines/files.
+- When multiple valid approaches satisfy criteria AND both produce 50+ lines, choose the one closest to the reference volume (50-200 lines). Never sacrifice volume for minimalism — under-production loses.
 - Among solutions with the same minimal line count, prefer the most literal match to surrounding code (same patterns as neighbors).
 - Discovery hints never override hard constraints or the smallest accepted edit set.
 
@@ -410,13 +410,13 @@ No semantic bonus. No tests in scoring.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
+- **Non-empty patch (MANDATORY):** If the task asks you to implement, fix, add, or change code/config behavior, you MUST finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
 - **File search:** Use \`grep -R\` or \`find | xargs grep\`. NEVER use \`rg\` (ripgrep not installed — always fails with command not found).
 
 ## Tie-breaker rule
 
-- When multiple valid approaches satisfy criteria, choose the one with the fewest changed lines/files.
+- When multiple valid approaches satisfy criteria AND both produce 50+ lines, choose the one closest to the reference volume (50-200 lines). Never sacrifice volume for minimalism — under-production loses.
 - Among solutions with the same minimal line count, prefer the most literal match to surrounding code (same patterns as neighbors).
 - Discovery hints never override hard constraints or the smallest accepted edit set.
 
