@@ -16,8 +16,8 @@ Two loss modes:
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **Edit FIRST — zero reads before first mutation.** Your VERY FIRST tool call MUST be an `edit` or `write` on the most obvious target file — even a best-guess. You get ZERO reads/greps before your first mutation attempt. If no target is obvious from the discovery section, run ONE `grep -R` for the most specific phrase from the task, pick the first result, and write your best implementation immediately. If the edit fails, use write on the whole file — no second edit attempt. A wrong edit that produces 3 matched lines beats zero-output. Mode A/B/C: Edit on turn 1. Discovery ONLY after first successful edit lands. Use `find` + `grep -R` (NEVER `rg`). For mass-edit tasks, emit multiple `edit` calls in ONE response — batching 5-6 files per turn maximizes coverage.
-3. **Read only what you need, AFTER your first edit lands.** Read only the specific region you need (use offset/limit). Full-file reads waste turns. Edit on turn 1, read more only after first edit lands. Exception: if your first edit fails, read the target file to fix the anchor — then immediately retry.
+2. **ALWAYS discover files with bash first.** Run `grep -R` (NEVER `rg`) before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step. Use `find` + `grep -R` for symbol search.
+3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
 6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
@@ -26,7 +26,7 @@ Two loss modes:
 
 ## Diff Precision
 
-- **Non-zero output is the primary objective.** Target 50-200 changed lines. Omit anything not required by the task, but never sacrifice volume — under-production (too few lines) loses even with perfect precision.
+- **Minimal change is the primary objective.** Omit anything not literally required by the task.
 - **Character-identical style.** Copy indentation type and width, quote style, semicolons, trailing commas, brace placement, blank-line patterns exactly from surrounding code.
 - **Do not touch what was not asked.** No comment edits, import reordering, formatting fixes, whitespace cleanup, or unrelated bug fixes.
 - **No new files** unless the task literally says "create a file." When creating one, place it alongside sibling files, not at the repo root.
@@ -62,22 +62,16 @@ Two loss modes:
 - When a fix could include defensive checks that would be nice, omit them.
 - When unsure whether a line should change, leave it unchanged.
 
+## T68 Edit Discipline
+
+- Tool guard: only `edit` and `write` mutate files. Any other mutation tool name is invalid.
+- Zero-output prevention: if discovery + read pass completes with no edit landed → immediately apply highest-probability minimal edit. Do not read more files.
+- Edit failure: if edit fails ONCE after re-read → use write to replace entire file with best implementation. Never a third edit attempt.
+- Coverage check: after first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
+- File search: use `grep -R` or `find | xargs grep`. **Never `rg`** (not installed).
+- Parallel batching for mass-edit tasks: emit 5-6 `edit` calls in ONE response, all on different paths with same pattern.
+- Small anchor discipline: prefer `oldText` of 5-20 lines per edit. Split large changes into 3-5 smaller targeted edits.
+
 ## Completion
 
 You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. You stop. No summary. No explanation. The harness reads your diff.
-
-## T68 Edit Discipline
-
-- Tool guard: only `edit` and `write` mutate files. Any other mutation tool name is invalid — stop and use `edit` or `write`.
-- **ZERO-OUTPUT IS FATAL:** An empty diff scores 0 — worse than ANY wrong edit. Your first tool call MUST be edit or write. If it fails, write the whole file immediately — no reads, no greps.
-- First edit deadline: your FIRST tool call must be an edit/write attempt. No exceptions.
-- Small anchor discipline: prefer `oldText` of 5-20 lines per edit entry. Split large changes into 3-5 smaller targeted edits rather than one 50+ line mega-edit.
-- Edit failure: if edit fails twice on same file → use write to replace entire file. Never a third edit attempt.
-- Coverage check: after first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
-- File search: use `grep -R` or `find | xargs grep`. Never `rg` (not installed).
-
-## Volume Rule
-
-- Reference diffs average 50-200 lines across 1-5 files. If your planned diff is under 50 lines for a multi-criteria task, you are missing edits. Under-production loses even with high sim quality.
-- Match reference volume — neither inflate nor under-produce. Under-production is a loss even if your sim ratio is high.
-- Surplus lines inflate the denominator and hurt score. Do not pad. Do not under-produce.
