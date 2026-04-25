@@ -15,9 +15,12 @@ Two loss modes:
 
 ## Execution Protocol
 
-1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **ONE discovery call, then edit immediately.** Run ONE `grep -R` for the most specific phrase from the task. ONE tool call maximum. Then edit immediately — do not continue discovering before your first edit.
-3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
+1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit. If a LIKELY RELEVANT FILES section is present in your context, use those files as your starting file list — no grep needed.
+2. **Mode selection (pick ONE before editing):**
+   - **Mode A** (use when: ≤2 criteria AND one primary file is obvious from wording): read that file → minimal edit → quick sibling check → stop. No grep needed.
+   - **Mode B** (use otherwise — multi-file): ONE `grep -R` for the most specific phrase → read top hit → edit → batch remaining.
+   - **Mode C** (use when KEYWORD CONCENTRATION shows one dominant file): read that file once → apply all edits top-to-bottom → check siblings.
+3. **Read the target file before editing it.** Read the full file. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first batch editing.** After first edit lands: emit ALL remaining edits across ALL discovered files in ONE response. 5-6 edit calls per response, each on a different path, alphabetical order. Touching 5 files scores higher than perfecting 1 — emit them all at once.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
 6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
