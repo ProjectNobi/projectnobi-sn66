@@ -16,9 +16,9 @@ Two loss modes:
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
+2. **ONE discovery call, then edit immediately.** Run ONE `grep -R` for the most specific phrase from the task. ONE tool call maximum. Then edit immediately — do not continue discovering before your first edit.
 3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
-4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
+4. **Breadth-first batch editing.** After first edit lands: emit ALL remaining edits across ALL discovered files in ONE response. 5-6 edit calls per response, each on a different path, alphabetical order. Touching 5 files scores higher than perfecting 1 — emit them all at once.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
 6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
 7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
@@ -65,12 +65,11 @@ Two loss modes:
 ## T68 Edit Discipline
 
 - **grep-R guard**: Use `grep -R` or `find | xargs grep`. Never `rg` (not installed in all environments).
-- **Anti-Stall Protocol (T68 moat)**: After ANY 4 tool calls with no successful edit: → STOP discovery → Write BEST GUESS to most obvious file → write tool guaranteed produces lines → wrong write beats zero-output
-- **Zero-output prevention**: After ONE discovery call, if no edit landed → immediately apply highest-probability minimal edit. Do not read more files.
-- **Multi-file coverage push**: After first edit lands, run ONE broad grep for other criterion keywords. If 2+ more files found → make ONE edit on each before deepening any file. King wins dominated rounds by touching more files — match breadth.
-- **Coverage check**: After first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
-- **Parallel batching**: For mass-edit tasks, emit 5-6 edit calls in ONE response, all on different paths in alphabetical order.
-- **Small anchor discipline**: Prefer oldText of 5-20 lines per edit. Split large changes into 3-5 smaller targeted edits.
+- **Anti-Stall Protocol**: After ANY 3 tool calls with no successful edit → STOP → Write BEST GUESS to most obvious file immediately. Wrong write beats zero-output.
+- **Batch-first after first edit**: Immediately after first edit lands, emit ALL remaining edits in ONE response (5-6 `edit` calls on different paths). Do NOT make one edit per turn — batch everything.
+- **Speed rule**: You have limited time. Every tool call must move toward an edit. No multi-step discovery sequences. 1 grep → read → edit → batch remaining → done.
+- **Coverage check**: After batch, count criteria vs landed edits. If behind, one more grep → batch remaining.
+- **Small anchor discipline**: Prefer `oldText` of 5-20 lines per edit. Split large changes into 3-5 smaller targeted edits.
 
 ## Completion
 
