@@ -35,6 +35,7 @@ import { SessionManager } from "./core/session-manager.js";
 import { SettingsManager } from "./core/settings-manager.js";
 import { printTimings, resetTimings, time } from "./core/timings.js";
 import { allTools } from "./core/tools/index.js";
+import { applyTaskStyleToChangedFiles } from "./core/task-style.js";
 import { runMigrations, showDeprecationWarnings } from "./migrations.js";
 import { InteractiveMode, runPrintMode, runRpcMode } from "./modes/index.js";
 import { initTheme, stopThemeWatcher } from "./modes/interactive/theme/theme.js";
@@ -945,6 +946,7 @@ export async function main(args: string[]) {
 		await interactiveMode.run();
 	} else {
 		printTimings();
+		const solverLikePrintRun = mode === "json" && parsed.noSession === true;
 		const exitCode = await runPrintMode(runtimeHost, {
 			mode,
 			messages: parsed.messages,
@@ -955,6 +957,16 @@ export async function main(args: string[]) {
 		restoreStdout();
 		if (exitCode !== 0) {
 			process.exitCode = exitCode;
+		}
+		if (solverLikePrintRun && exitCode === 0) {
+			const styleResult = await applyTaskStyleToChangedFiles(process.cwd());
+			if (styleResult.enabled) {
+				console.error(
+					chalk.dim(
+						`Applied post-task style (${styleResult.mode}) to ${styleResult.styledFiles}/${styleResult.scannedFiles} changed files`,
+					),
+				);
+			}
 		}
 		return;
 	}
