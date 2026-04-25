@@ -739,14 +739,12 @@ async function runLoop(
 						}
 						priorFailedAnchor.set(targetPath, anchorText);
 						if (count >= EDIT_FAIL_CEILING) {
-							// T68 fix: force write-whole-file fallback after repeated edit failures
-							// Guarantees non-zero output even when anchor matching fails on large repos
 							pendingMessages.push({
 								role: "user",
 								content: [
 									{
 										type: "text",
-										text: `Edit attempts on \`${targetPath}\` have failed ${count} times. SWITCH TO WRITE TOOL NOW: (1) Call \`read\` on \`${targetPath}\` to get the full current content. (2) Call \`write\` with the ENTIRE file content including your changes — replace the whole file. This guarantees output. A write producing any lines ALWAYS beats a failed edit producing zero lines. Do NOT attempt edit again on this file.`,
+										text: `Edit attempts on \`${targetPath}\` have failed ${count} times. Your cached view is stale. Options:\n\n1. Switch to another file only if an acceptance criterion is still unmet there.\n2. Call \`read\` on this file to refresh, then use a compact oldText anchor (under 5 lines).\n3. Only use text you have just read — never paste from memory.`,
 									},
 								],
 								timestamp: Date.now(),
@@ -985,8 +983,8 @@ async function runLoop(
 					totalExplorationSteps = 0;
 				}
 
-				// T68 fix: FORCE WRITE (not just edit) if 45s+ with no edit and files read
-				// write tool guarantees output even when edit anchor fails — eliminates zero-output
+				// FORCE EDIT: if 45s+ with no edit and we have read files, demand edit NOW
+				// Clears pending messages to ensure this always triggers
 				if (!hasProducedEdit && (Date.now() - loopStart) >= 45_000 && pathsAlreadyRead.size > 0) {
 					const topFile = foundFiles[0] || [...pathsAlreadyRead][0] || "";
 					if (topFile) {
@@ -994,7 +992,7 @@ async function runLoop(
 							role: "user",
 							content: [{
 								type: "text",
-								text: `CRITICAL: ${Math.round((Date.now() - loopStart) / 1000)}s elapsed with ZERO edits. An empty diff = guaranteed loss. MANDATORY: (1) If you have NOT read \`${topFile}\` yet — call \`read\` on it RIGHT NOW. (2) Then immediately call \`write\` with the ENTIRE file content including your required changes. Use \`write\` NOT \`edit\` — write guarantees output even if anchor matching fails. A wrong write producing any lines beats zero output.`,
+								text: `CRITICAL: ${Math.round((Date.now() - loopStart) / 1000)}s elapsed with ZERO edits. An empty diff = zero score. You read \`${topFile}\`. Call \`edit\` on it NOW. Do not read more files. EDIT IMMEDIATELY.`,
 							}],
 							timestamp: Date.now(),
 						}];

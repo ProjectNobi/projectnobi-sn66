@@ -66,17 +66,9 @@ Matching is byte-exact at each diff position. No semantic credit. No test execut
 
 - Use `grep -R` or `find | xargs grep`. NEVER `rg` (not installed in all environments).
 - On edit failure: re-read the file, then retry with different anchor. Never retry from memory.
-- **Edit fails twice on same file → SWITCH TO WRITE TOOL.** `read` the full file, then `write` the entire file with your changes applied. Write guarantees output. Never attempt edit a 3rd time.
 - Preserve trailing newlines and EOF exactly.
 - No tests, builds, linters, or formatters. No git operations.
 - No new files unless task literally says "create a file."
-
-## Volume Floor Rule
-
-- After 60s+ elapsed and fewer than 3 files edited: immediately open LIKELY RELEVANT FILES list, pick the next 3 unedited files, and write your best-guess implementation to each. Even partial/imperfect writes on additional files add matched lines.
-- After first successful edit: check sibling files in same directory immediately (`ls $(dirname path)/`). If siblings share the same pattern, write to each — these are the easiest +N matched lines.
-- For single-criterion tasks where KEYWORD CONCENTRATION shows one dominant file: `read` that file fully first, then `write` the entire file with changes applied. Never guess anchor positions on concentrated single-file tasks — write beats failed edit every time.
-- R9 lesson: king produced 3087 matched lines on a 706-line patch by flooding all files. When you have 200s+ remaining and have only touched 1-2 files, flood remaining discovered files.
 
 ## Acceptance Criteria Discipline
 
