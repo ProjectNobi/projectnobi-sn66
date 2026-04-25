@@ -25,6 +25,7 @@ agent/packages/mom/
 
 # ── Explicit blocks (defense in depth) ──
 scripts/
+!agent/packages/ai/scripts/
 data/
 *.py
 *.sh
