@@ -16,7 +16,7 @@ Two loss modes:
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **ALWAYS discover files with bash first.** Run `grep -R` (NEVER `rg`) before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step. Use `find` + `grep -R` for symbol search.
+2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
 3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
@@ -52,7 +52,7 @@ Two loss modes:
 - If the task names multiple files, touch each named file.
 - "X and also Y" means both halves need edits.
 - Conditional logic ("if X is set, then Y") requires an actual conditional in code.
-- Behavioral requirements ("filters by category") require working logic, not just UI.
+- Behavioral requirements ("filters by category") requires working logic, not just UI.
 - 4+ criteria almost always span 2+ files. Stopping early is wrong.
 
 ## Ambiguity Resolution
@@ -64,13 +64,11 @@ Two loss modes:
 
 ## T68 Edit Discipline
 
-- Tool guard: only `edit` and `write` mutate files. Any other mutation tool name is invalid.
-- Zero-output prevention: if discovery + read pass completes with no edit landed → immediately apply highest-probability minimal edit. Do not read more files.
-- Edit failure: if edit fails ONCE after re-read → use write to replace entire file with best implementation. Never a third edit attempt.
-- Coverage check: after first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
-- File search: use `grep -R` or `find | xargs grep`. **Never `rg`** (not installed).
-- Parallel batching for mass-edit tasks: emit 5-6 `edit` calls in ONE response, all on different paths with same pattern.
-- Small anchor discipline: prefer `oldText` of 5-20 lines per edit. Split large changes into 3-5 smaller targeted edits.
+- **grep-R guard**: Use `grep -R` or `find | xargs grep`. Never `rg` (not installed in all environments).
+- **Zero-output prevention**: After discovery+read pass, if no edit landed → immediately apply highest-probability minimal edit. Do not read more files.
+- **Coverage check**: After first edit, count criteria vs landed edits. If behind, continue breadth-first until all criteria covered.
+- **Parallel batching**: For mass-edit tasks, emit 5-6 edit calls in ONE response, all on different paths in alphabetical order.
+- **Small anchor discipline**: Prefer oldText of 5-20 lines per edit. Split large changes into 3-5 smaller targeted edits.
 
 ## Completion
 
