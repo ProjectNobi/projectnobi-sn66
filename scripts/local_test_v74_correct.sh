@@ -35,7 +35,7 @@ export GITHUB_TOKEN=$(grep "^GITHUB_PAT=" /root/.secrets/github_pat.env | cut -d
 export OPENROUTER_API_KEY=$(grep "^OPENROUTER_API_KEY=" /root/.secrets/api_keys.env | cut -d= -f2 | tr -d '\r')
 
 OUR_AGENT=/root/sn66-v7/agent
-KING_AGENT="VladaWebDev/Mine016@b6a99c4296b01901f47b0dba2d95f68b9831a32d"
+KING_AGENT="Junjie4/sn66-miner@af84e34fd6770ec1dcd493f473e3b22c6276c816"
 ROUNDS=${1:-10}
 BASELINE_MODEL="${BASELINE_MODEL:-google/gemini-2.5-flash}"
 SOLVER_MODEL="${SOLVER_MODEL:-google/gemini-2.5-flash}"
