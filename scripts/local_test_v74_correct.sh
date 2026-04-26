@@ -1,7 +1,22 @@
 #!/bin/bash
 # ============================================================
-# SN66 v74 CORRECT Evaluation Harness — v4 (aligned with live duel)
+# SN66 CANONICAL Evaluation Harness — v4 (commit 58b2835)
+# DEFAULT TEST SCRIPT for all future SN66 miner versions
 # ============================================================
+# HOW TO RUN:
+#   bash scripts/local_test_v74_correct.sh [rounds]
+#   bash scripts/local_test_v74_correct.sh 10   # default
+#   bash scripts/local_test_v74_correct.sh 30   # deeper test
+#
+# WHEN KING CHANGES (ONLY reason to edit this file):
+#   1. Check live king: curl -s https://sn66.neuralinternet.ai/state | python3 -m json.tool | grep -A5 'king'
+#   2. Update KING_AGENT below: "owner/repo@full_commit_sha"
+#   3. Commit this change to tierra-final
+#   4. DO NOT change WIN_MARGIN, MIN_DECISIVE_ROUNDS, or gate formula
+#      unless the production validate.py defaults change
+#
+# NEVER use local_test_v39.sh — it is an older proxy-only script, retired.
+#
 # Production formula (validate.py):
 #   k_lines = compare(baseline, king).matched_changed_lines
 #   c_lines = compare(baseline, challenger).matched_changed_lines
@@ -62,7 +77,7 @@ print(m.group(1) if m else '0')
 }
 
 tee_log "=== SN66 v74 CORRECT Harness v4 | $(date -u) ==="
-tee_log "Rounds=$ROUNDS | Baseline=cursor+$BASELINE_MODEL | Timeout=dynamic (baseline*2+1, max 300s)"
+tee_log "Rounds=$ROUNDS | Baseline=docker-pi+$BASELINE_MODEL | Timeout=dynamic (baseline*2+1, max 300s)"
 tee_log "King=$KING_AGENT"
 tee_log "Scoring: compare(baseline,ours).matched_changed_lines vs compare(baseline,king).matched_changed_lines"
 tee_log "Gate: wins > losses + $WIN_MARGIN AND decisive >= $MIN_DECISIVE_ROUNDS"
@@ -99,7 +114,7 @@ while [ "$VALID_ROUNDS" -lt "$ROUNDS" ] && [ "$ATTEMPTS" -lt $((ROUNDS * 15)) ];
     # [1/3] Baseline solve with CURSOR agent (matches production)
     tee_log "  [1/3] Baseline solve (cursor+$BASELINE_MODEL)..."
     BASELINE_START=$(date +%s.%N)
-    tau solve --task "$T" --solution baseline --agent cursor \
+    tau solve --task "$T" --solution baseline --agent "$OUR_AGENT" \
         --workspace-root "$WORKSPACE" \
         --solver-model "$BASELINE_MODEL" \
         --agent-timeout 300 \

@@ -371,15 +371,6 @@ If \`edit\` repeatedly errors:
 
 ---
 
-## T68 MOAT — 15% ADVANTAGE (OPUS-DESIGNED)
-
-**1. Stronger edit failure recovery:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file with corrected version. Never attempt edit a 3rd time.
-
-**2. Explicit sibling propagation:** After each edit, grep the primary edited symbol in other source files. If found in an importer/user that also needs updating per the task, edit it too.
-
-**3. Criteria completion guard:** Before stopping, count: (a) acceptance criteria identified, (b) files successfully edited. If (b) < (a), you have missed criteria — continue editing.
-
-**4. Zero-output prevention:** If you reach turn 8 with no successful edit → use write tool on the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
 `;
 
 const TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
@@ -405,8 +396,6 @@ No semantic bonus. No tests in scoring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
 - **Non-empty patch (best effort):** If the task asks you to implement, fix, add, or change code/config behavior, you should finish with **at least one successful** \`edit\` or \`write\` that persists to disk. If blocked by tool failures, permissions, or hard session timeouts, report the blocker explicitly instead of fabricating edits. (Exception: the user explicitly asks for explanation only and no code changes.)
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
-- **File search:** Use \`grep -R\` or \`find | xargs grep\`. NEVER use \`rg\` (ripgrep not installed — always fails with command not found).
-
 ## Tie-breaker rule
 
 - When multiple valid approaches satisfy criteria, choose the one with the fewest changed lines/files.
@@ -522,6 +511,15 @@ If \`edit\` repeatedly errors:
 
 ---
 
+## T68 MOAT — 15% ADVANTAGE (OPUS-DESIGNED)
+
+**1. Write fallback:** If edit fails TWICE on same file after re-read → use write tool to replace entire file with corrected version. Never attempt edit a 3rd time.
+
+**2. Sibling propagation (task-bound):** After each edit, grep the primary edited symbol in other source files. Edit sibling only if task criteria explicitly require it.
+
+**3. Criteria guard:** Before stopping: count acceptance criteria vs successfully edited files. If edited < criteria count → continue editing.
+
+**4. Zero-output prevention:** If you reach turn 8 with no successful edit → use write tool on most likely file with best-guess implementation. Imperfect edit always outscores empty diff.
 `
 
 export interface BuildSystemPromptOptions {
