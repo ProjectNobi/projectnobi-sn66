@@ -335,7 +335,7 @@ async function runLoop(
 	};
 
 	const GRACEFUL_EXIT_MS = 290_000;
-	const PREEMPT_EXIT_MS = 120_000;
+	const PREEMPT_EXIT_MS = 60_000;
 	let reviewPassDone = false;
 
 	/** Successful `edit` or `write` mutates disk — both must advance scoring-related loop state (was edit-only). */
