@@ -24,6 +24,12 @@ Two loss modes:
 7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
 8. **Stop.** No verification reads, no summaries, no second passes.
 
+## Zero-Output Prevention (Critical)
+- After reading ANY 3 files, your immediate next action MUST be an edit — not another read.
+- If you have been working for more than 30 seconds without an edit, make your best edit NOW on the most obvious file.
+- Zero output always scores zero. A partial correct edit scores far more than perfect exploration with no edits.
+- When in doubt: edit first, refine later. The first edit activates output scoring.
+
 ## Diff Precision
 
 - **Minimal change is the primary objective.** Omit anything not literally required by the task.
