@@ -334,16 +334,29 @@ async function runLoop(
 		return missing;
 	};
 
-	// v98p: Match king's exact timeout computation — reads BOTH TAU_AGENT_TIMEOUT and PI_AGENT_TIMEOUT,
-	// falls back to 290s (not 90s). Fixes premature exits when validator uses PI_AGENT_TIMEOUT.
+	// v99p: Read both TAU_AGENT_TIMEOUT and PI_AGENT_TIMEOUT. Default 290s matches king.
 	const _envTimeoutSec = Number(process.env.TAU_AGENT_TIMEOUT || process.env.PI_AGENT_TIMEOUT || "0");
 	const _budgetMs = _envTimeoutSec > 0 ? _envTimeoutSec * 1000 : 290_000;
-	const GRACEFUL_EXIT_MS = Math.max(15_000, Math.floor(_budgetMs * 0.85));
+	// For short budgets (<150s), use tighter GRACEFUL to squeeze more editing time
+	const _isShortBudget = _budgetMs < 150_000;
+	const GRACEFUL_EXIT_MS = Math.max(15_000, Math.floor(_budgetMs * (_isShortBudget ? 0.90 : 0.85)));
 	const PREEMPT_EXIT_MS = Math.max(10_000, Math.floor(_budgetMs * 0.70));
-	const HARD_ABORT_MS = Math.max(GRACEFUL_EXIT_MS + 3_000, Math.floor(_budgetMs * 0.92));
+	const HARD_ABORT_MS = Math.max(GRACEFUL_EXIT_MS + 3_000, Math.floor(_budgetMs * 0.95));
 	const EARLY_NUDGE_MS = 25_000;
 	const LATE_NUDGE_MS = 55_000;
 	let reviewPassDone = false;
+
+	// v99p: Budget-aware fast-path. On short-timeout repos (< 150s), inject urgency
+	// message immediately so agent skips exploration and edits on first turn.
+	if (_budgetMs < 150_000 && newMessages.length > 0) {
+		const shortBudgetNudge = `BUDGET ALERT: You have only ${Math.round(_budgetMs/1000)}s total. Skip ALL exploration (no grep, no find, no ls). Read the task. Pick the most likely file. Edit it NOW on your first response. Every second of exploration = lost lines.`;
+		// Add as first pending message before agent's first turn
+		pendingMessages.unshift({
+			role: "user" as const,
+			content: [{ type: "text" as const, text: shortBudgetNudge }],
+			timestamp: Date.now(),
+		});
+	}
 
 	/** Successful `edit` or `write` mutates disk — both must advance scoring-related loop state (was edit-only). */
 	const recordSuccessfulFileMutation = async (targetPath: string): Promise<void> => {
