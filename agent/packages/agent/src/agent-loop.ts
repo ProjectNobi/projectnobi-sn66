@@ -987,7 +987,7 @@ async function runLoop(
 				// Fires even before a file is read — uses foundFiles[0] from task analysis if available
 				// Clears pending messages to ensure this always triggers
 				const _forceEditTopFile = [...pathsAlreadyRead][0] || foundFiles[0] || "";
-				if (!hasProducedEdit && (Date.now() - loopStart) >= 15_000 && _forceEditTopFile) {
+				if (!hasProducedEdit && (Date.now() - loopStart) >= 25_000) {
 					const _readNote = pathsAlreadyRead.size > 0
 						? `You already read \`${_forceEditTopFile}\`.`
 						: `Target file: \`${_forceEditTopFile}\`. Read it in this call then immediately edit — do not run grep or find.`;
