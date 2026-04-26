@@ -334,43 +334,13 @@ async function runLoop(
 		return missing;
 	};
 
-	// v96p: Junjie4 king-style dynamic exit with percentage-based thresholds.
-	// GRACEFUL=85% budget, PREEMPT=70% budget, HARD_ABORT=92% budget.
-	// Falls back to 90s if unset (safe below all realistic validator budgets).
-	function computeGracefulExitMs(): number {
-		const raw = process.env.TAU_AGENT_TIMEOUT;
-		if (raw && /^[0-9]+$/.test(raw)) {
-			const secs = parseInt(raw, 10);
-			if (secs > 5 && secs <= 3600) {
-				// GRACEFUL_EXIT at 85% of budget (leave 15% buffer for harness wrap-up)
-				return Math.max(10_000, Math.floor(secs * 1000 * 0.85));
-			}
-		}
-		return 90_000;
-	}
-	function computePreemptExitMs(): number {
-		// PREEMPT at 70% of budget — aggressive early exit when behind
-		const raw = process.env.TAU_AGENT_TIMEOUT;
-		if (raw && /^[0-9]+$/.test(raw)) {
-			const secs = parseInt(raw, 10);
-			if (secs > 5 && secs <= 3600) {
-				return Math.max(10_000, Math.floor(secs * 1000 * 0.70));
-			}
-		}
-		return 70_000;
-	}
-	function computeHardAbortMs(): number {
-		// HARD_ABORT at 92% of budget — last possible moment to return
-		const raw = process.env.TAU_AGENT_TIMEOUT;
-		if (raw && /^[0-9]+$/.test(raw)) {
-			const secs = parseInt(raw, 10);
-			if (secs > 5 && secs <= 3600) {
-				return Math.max(10_000, Math.floor(secs * 1000 * 0.92));
-			}
-		}
-		return 92_000;
-	}
-	const GRACEFUL_EXIT_MS = computeGracefulExitMs();
+	// v98p: Match king's exact timeout computation — reads BOTH TAU_AGENT_TIMEOUT and PI_AGENT_TIMEOUT,
+	// falls back to 290s (not 90s). Fixes premature exits when validator uses PI_AGENT_TIMEOUT.
+	const _envTimeoutSec = Number(process.env.TAU_AGENT_TIMEOUT || process.env.PI_AGENT_TIMEOUT || "0");
+	const _budgetMs = _envTimeoutSec > 0 ? _envTimeoutSec * 1000 : 290_000;
+	const GRACEFUL_EXIT_MS = Math.max(15_000, Math.floor(_budgetMs * 0.85));
+	const PREEMPT_EXIT_MS = Math.max(10_000, Math.floor(_budgetMs * 0.70));
+	const HARD_ABORT_MS = Math.max(GRACEFUL_EXIT_MS + 3_000, Math.floor(_budgetMs * 0.92));
 	const EARLY_NUDGE_MS = 25_000;
 	const LATE_NUDGE_MS = 55_000;
 	let reviewPassDone = false;
