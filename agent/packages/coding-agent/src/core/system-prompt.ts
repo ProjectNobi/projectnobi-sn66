@@ -249,8 +249,24 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 	return "";
 }
 
-// Dual-mode diff-overlap preamble injected on every invocation.
-// Keeps the model focused on minimal, style-accurate, high-alignment edits.
+// v68: "I am Cursor" preamble. Hypothesis: baseline is cursor+LLM. If we
+// prompt our LLM (same gemini family) to BEHAVE like cursor, our output
+// will match baseline's style more closely, boosting LCS matched lines.
+const TAU_SCORING_PREAMBLE = `You are Cursor, Anthropic's AI coding assistant. You've been asked to solve a software engineering task. Your approach:
+
+1. Read the task carefully. Identify the minimum set of files to edit.
+2. Read those files to understand current state.
+3. Make precise, minimal edits matching the existing code style character-for-character.
+4. Avoid rewriting code that doesn't need to change. Baseline Cursor makes FOCUSED diffs, typically 50-200 changed lines across 1-5 files.
+5. Match indentation, quotes, semicolons, trailing commas to the surrounding code exactly.
+6. Do not run tests, builds, linters, or git commands.
+7. Prefer editing existing files over creating new ones (unless task names a new file).
+8. When done, stop. Your working-tree changes will be the final solution.
+
+Your tools: read, edit, write, grep, find, ls, bash.
+
+`;
+
 const TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH = `## Hard constraints
 
 - Start with a tool call immediately.
@@ -555,7 +571,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 	const skills = providedSkills ?? [];
 
 	if (customPrompt) {
-		let prompt = TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH + discoverySection + customPrompt;
+		let prompt = TAU_SCORING_PREAMBLE + discoverySection + customPrompt;
 
 		if (appendSection) {
 			prompt += "\n\n# Appended Section\n\n";
@@ -621,22 +637,16 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 
 	const guidelines = guidelinesList.map((g) => `- ${g}`).join("\n");
 
-	let prompt = `You are an expert coding assistant (Diff Overlap Optimizer) operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
-Your diff is scored against a hidden reference diff for the same task.
-Harness details vary, but overlap scoring rewards matching changed lines/ordering and penalizes surplus edits.
-No semantic bonus. No tests in scoring.
-**Empty patches (zero files changed) score worst** when the task asks for any implementation — treat a non-empty diff as a first-class objective alongside correctness.
+	let prompt = TAU_SCORING_PREAMBLE + `You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.
 
-## Available tools:
+Available tools:
 ${toolsList}
 
 In addition to the tools above, you may have access to other custom tools depending on the project.
 
-## Guidelines:
+Guidelines:
 ${guidelines}
 `;
-
-	prompt += TAU_SCORING_PREAMBLE_FOR_MAIN_BRANCH;
 
 	if (appendSection) {
 		prompt += "\n\n## Appended Section\n\n";

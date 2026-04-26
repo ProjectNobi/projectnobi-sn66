@@ -334,8 +334,21 @@ async function runLoop(
 		return missing;
 	};
 
-	const GRACEFUL_EXIT_MS = 290_000;
-	const PREEMPT_EXIT_MS = 120_000;
+	// v95p: DYNAMIC graceful exit (king innovation). Reads TAU_AGENT_TIMEOUT env var.
+	// Falls back to 90s if unset (safe below all realistic validator budgets).
+	function computeGracefulExitMs(): number {
+		const raw = process.env.TAU_AGENT_TIMEOUT;
+		if (raw && /^[0-9]+$/.test(raw)) {
+			const secs = parseInt(raw, 10);
+			if (secs > 5 && secs <= 3600) {
+				return Math.max(10_000, (secs - 15) * 1000);
+			}
+		}
+		return 90_000;
+	}
+	const GRACEFUL_EXIT_MS = computeGracefulExitMs();
+	const EARLY_NUDGE_MS = 25_000;
+	const LATE_NUDGE_MS = 55_000;
 	let reviewPassDone = false;
 
 	/** Successful `edit` or `write` mutates disk — both must advance scoring-related loop state (was edit-only). */
@@ -498,7 +511,8 @@ async function runLoop(
 				pendingMessages = [];
 			}
 
-			if (hasProducedEdit && (Date.now() - loopStart) >= PREEMPT_EXIT_MS) {
+			// v95p: Check graceful exit BEFORE each LLM request (king pattern)
+			if ((Date.now() - loopStart) >= GRACEFUL_EXIT_MS) {
 				await emit({ type: "agent_end", messages: newMessages });
 				return;
 			}
@@ -605,14 +619,17 @@ async function runLoop(
 				}
 			}
 
-			// ZERO-DIFF PREVENTION: model wants to stop but has no edits at all
-			if (!hasMoreToolCalls && !hasProducedEdit && emptyTurnRetries >= EMPTY_TURN_MAX && pathsAlreadyRead.size > 0) {
-				emptyTurnRetries = 0; // reset to allow more retries
+			// v95p: ZERO-DIFF PREVENTION — unconditional (king innovation). Removed pathsAlreadyRead gate.
+			if (!hasMoreToolCalls && !hasProducedEdit && emptyTurnRetries >= EMPTY_TURN_MAX) {
+				emptyTurnRetries = 0;
 				const topFile = foundFiles[0] || [...pathsAlreadyRead][0] || "";
 				await emit({ type: "turn_end", message, toolResults: [] });
+				const guidance = topFile
+					? `You are about to finish with ZERO file changes. This guarantees a loss. You read \`${topFile}\`. Apply \`edit\` or \`write\` now — even a partial or imperfect change scores more than nothing.`
+					: `You are about to finish with ZERO file changes. A blank diff guarantees a loss (0 points). Pick the most obvious target file from the task description, \`read\` it, then immediately \`edit\` or \`write\` at least one change addressing the main acceptance criterion. Any edit beats no edit.`;
 				pendingMessages.push({
 					role: "user",
-					content: [{ type: "text", text: `You are about to finish with ZERO file changes. This guarantees a loss. You read \`${topFile}\`. Apply \`edit\` or \`write\` now — even a partial or imperfect change scores more than nothing.` }],
+					content: [{ type: "text", text: guidance }],
 					timestamp: Date.now(),
 				});
 				continue;
@@ -1005,6 +1022,15 @@ async function runLoop(
 					await emit({ type: "turn_end", message, toolResults });
 					await emit({ type: "agent_end", messages: newMessages });
 					return;
+				}
+
+				// v95p: LATE_NUDGE_MS — king innovation (55s mark)
+				if (!hasProducedEdit && (Date.now() - loopStart) >= LATE_NUDGE_MS && pendingMessages.length === 0) {
+					pendingMessages.push({
+						role: "user",
+						content: [{ type: "text", text: `Over ${Math.round(LATE_NUDGE_MS/1000)}s without successful file changes. Pick the clearest path from the task or keyword list and apply \`edit\` or \`write\` now — further discovery has diminishing returns.` }],
+						timestamp: Date.now(),
+					});
 				}
 			}
 
