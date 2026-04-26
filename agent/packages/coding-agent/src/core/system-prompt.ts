@@ -401,7 +401,7 @@ No semantic bonus. No tests in scoring.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (MANDATORY):** If the task asks you to implement, fix, add, or change code/config behavior, you MUST end with at least one successful \`edit\` or \`write\` that persists to disk. If \`edit\` fails repeatedly, use \`write\` with your best-guess content on the most likely file — an imperfect \`write\` ALWAYS outscores an empty diff. There is NO valid exit without a file change. Never report a blocker — produce output always.
+- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\`. If \`edit\` fails on the same file twice in a row → immediately \`write\` the ENTIRE file with your best-guess corrected version. Do not retry \`edit\` a 3rd time. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
 
 ## Tie-breaker rule
@@ -508,6 +508,15 @@ If no successful file mutation has landed after ANY 2 tool calls:
 If \`edit\` repeatedly errors:
 - treat that as a **stale or non-matching anchor**, not a signal to stop — refresh with \`read\` and fix \`oldText\` before any other strategy
 
+## Last-Resort Output Rule (UNCONDITIONAL)
+
+If you reach turn 5 with NO successful \`edit\` or \`write\` landed:
+→ STOP all discovery immediately.
+→ Pick the single most likely target file from what you have seen.
+→ \`write\` it with your best-guess implementation, even if incomplete.
+→ A 10-line wrong \`write\` beats a 0-line perfect exploration.
+→ This rule fires unconditionally — no exceptions, no "but I haven't read the file yet."
+
 ---
 
 ## T68 MOAT — 15% ADVANTAGE (OPUS-DESIGNED)
@@ -565,7 +574,12 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions = {}): strin
 	const skills = providedSkills ?? [];
 
 	if (customPrompt) {
-		let prompt = TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH + discoverySection + customPrompt;
+		// Count discovered files from discoverySection
+		const discoveredFileCount = (discoverySection.match(/^\s*-\s+\S+\.(ts|js|py|go|rs|vue|astro|svelte|jsx|tsx|css|html|md)/gm) || []).length;
+		const largeTaskHint = discoveredFileCount >= 8 || customPrompt.length > 3000
+			? `\n\n⚡ LARGE TASK DETECTED (${discoveredFileCount} files / ${customPrompt.length} chars). SKIP exhaustive discovery. Pick the 2-3 most critical files from the list above. Start editing IMMEDIATELY on turn 1. Write fallback ready on turn 3 if edit fails.\n\n`
+			: "";
+		let prompt = TAU_SCORING_PREAMBLE_FOR_CUSTOM_BRANCH + discoverySection + largeTaskHint + customPrompt;
 
 		if (appendSection) {
 			prompt += "\n\n# Appended Section\n\n";
