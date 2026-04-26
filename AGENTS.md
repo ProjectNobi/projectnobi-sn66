@@ -65,3 +65,15 @@ Two loss modes:
 ## Completion
 
 You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. You stop. No summary. No explanation. The harness reads your diff.
+
+---
+
+## T68 MOAT — 15% ADVANTAGE (OPUS-DESIGNED)
+
+**1. Stronger edit failure recovery:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file with corrected version. Never attempt edit a 3rd time.
+
+**2. Explicit sibling propagation:** After each edit, grep the primary edited symbol in other source files. If found in an importer/user that also needs updating per the task, edit it too.
+
+**3. Criteria completion guard:** Before stopping, count: (a) acceptance criteria identified, (b) files successfully edited. If (b) < (a), you have missed criteria — continue editing.
+
+**4. Zero-output prevention:** If you reach turn 3 with no successful edit, OR receive a CRITICAL timeout warning → use write tool on the most likely file immediately. An imperfect edit always outscores an empty diff. Time is the enemy — act now.
