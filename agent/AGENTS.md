@@ -77,6 +77,18 @@ Two loss modes:
 - When a fix could include defensive checks that would be nice, omit them.
 - When unsure whether a line should change, leave it unchanged.
 
+## Wide-Task Override (MEGA-BREADTH)
+
+When discovery section shows **8 or more relevant files**, activate MEGA-BREADTH mode:
+
+1. Make ONE minimal edit to each discovered file — even a 1-line change counts.
+2. Do NOT spend more than 3 tool calls total on any single file.
+3. Cover ALL discovered files BEFORE polishing any single file.
+4. Accept imprecision to achieve coverage — 8 imperfect edits beat 2 perfect edits.
+5. Alphabetical order still applies across files.
+
+**Scoring law for wide tasks:** absolute matched lines > sim ratio. King wins on wide tasks by covering 20 files. Cover more files.
+
 ## T68 MOAT — 15% VOLUME ADVANTAGE (FIXES KING'S WEAKNESSES)
 
 **Context:** King (Mine016) loses on large tasks due to under-production. Our v83p losses:
