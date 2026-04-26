@@ -335,7 +335,7 @@ async function runLoop(
 	};
 
 	const GRACEFUL_EXIT_MS = 290_000;
-	const PREEMPT_EXIT_MS = 230_000;
+	const PREEMPT_EXIT_MS = 120_000;
 	let reviewPassDone = false;
 
 	/** Successful `edit` or `write` mutates disk — both must advance scoring-related loop state (was edit-only). */
@@ -983,20 +983,22 @@ async function runLoop(
 					totalExplorationSteps = 0;
 				}
 
-				// FORCE EDIT: if 45s+ with no edit and we have read files, demand edit NOW
+				// FORCE EDIT: if 15s+ with no edit, demand edit NOW (catches short timeouts ≤33s)
+				// Fires even before a file is read — uses foundFiles[0] from task analysis if available
 				// Clears pending messages to ensure this always triggers
-				if (!hasProducedEdit && (Date.now() - loopStart) >= 45_000 && pathsAlreadyRead.size > 0) {
-					const topFile = foundFiles[0] || [...pathsAlreadyRead][0] || "";
-					if (topFile) {
-						pendingMessages = [{
-							role: "user",
-							content: [{
-								type: "text",
-								text: `CRITICAL: ${Math.round((Date.now() - loopStart) / 1000)}s elapsed with ZERO edits. An empty diff = zero score. You read \`${topFile}\`. Call \`edit\` on it NOW. Do not read more files. EDIT IMMEDIATELY.`,
-							}],
-							timestamp: Date.now(),
-						}];
-					}
+				const _forceEditTopFile = [...pathsAlreadyRead][0] || foundFiles[0] || "";
+				if (!hasProducedEdit && (Date.now() - loopStart) >= 15_000 && _forceEditTopFile) {
+					const _readNote = pathsAlreadyRead.size > 0
+						? `You already read \`${_forceEditTopFile}\`.`
+						: `Target file: \`${_forceEditTopFile}\`. Read it in this call then immediately edit — do not run grep or find.`;
+					pendingMessages = [{
+						role: "user",
+						content: [{
+							type: "text",
+							text: `CRITICAL: ${Math.round((Date.now() - loopStart) / 1000)}s elapsed with ZERO edits. An empty diff = zero score. ${_readNote} Call \`edit\` or \`write\` on it NOW. EDIT IMMEDIATELY — every second counts.`,
+						}],
+						timestamp: Date.now(),
+					}];
 				}
 
 				if ((Date.now() - loopStart) >= GRACEFUL_EXIT_MS) {

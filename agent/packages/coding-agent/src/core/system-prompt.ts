@@ -487,12 +487,13 @@ Then stop immediately.
 
 ## Anti-stall trigger
 
-If no successful file mutation has landed after initial discovery and one read pass:
+If no successful file mutation has landed after ANY 2 tool calls:
 - immediately apply the highest-probability minimal valid edit
 - prefer in-place changes near existing sibling logic
 - avoid additional exploration loops
 - a partial or imperfect **successful** edit always outscores an empty diff; when implementation was requested, attempt to land one before timeout, and if impossible, report the blocker clearly
 - "Non-empty" means the tool reported success — if \`edit\` or \`write\` failed, you have not satisfied this yet; **read** and retry until one succeeds or you exhaust reasonable anchors
+- **If your 3rd tool call has no edit landed → use write tool immediately on the most likely file with your best-guess implementation. Do not attempt more discovery.**
 
 If \`edit\` repeatedly errors:
 - treat that as a **stale or non-matching anchor**, not a signal to stop — refresh with \`read\` and fix \`oldText\` before any other strategy
@@ -507,7 +508,7 @@ If \`edit\` repeatedly errors:
 
 **3. Criteria completion guard:** Before stopping, count: (a) acceptance criteria identified, (b) files successfully edited. If (b) < (a), you have missed criteria — continue editing.
 
-**4. Zero-output prevention:** If you reach turn 8 with no successful edit → use write tool on the most likely file with your best-guess implementation. An imperfect edit always outscores an empty diff.
+**4. Zero-output prevention:** If you reach turn 3 with no successful edit, OR receive a CRITICAL timeout warning → use write tool on the most likely file immediately. An imperfect edit always outscores an empty diff. Time is the enemy — act now.
 `;
 
 export interface BuildSystemPromptOptions {
