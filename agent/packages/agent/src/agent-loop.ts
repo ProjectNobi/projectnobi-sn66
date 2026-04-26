@@ -177,8 +177,6 @@ async function runLoop(
 	let emptyTurnRetries = 0;
 	const EMPTY_TURN_MAX = 2;
 	let totalLlmRequests = 0;
-	/** v233: total follow-import adds (tighter cap on small explicit-file tasks) */
-	let importFollowAdds = 0;
 	let lastSlowPaceNudgeAt = 0;
 
 	const loopStart = Date.now();
@@ -263,47 +261,8 @@ async function runLoop(
 		return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 	};
 
-	/** v235: generic — extract numbered/bulleted lines under "Acceptance criteria:" from any task text (no per-task hooks). */
-	const parseAcceptanceCriteriaBullets = (text: string): string[] => {
-		const out: string[] = [];
-		const m = /#*\s*Acceptance criteria\s*:\s*/i.exec(text);
-		if (!m) return out;
-		const rest = text.slice(m.index + m[0].length);
-		const lines = rest.split("\n");
-		for (const line of lines) {
-			const t = line.trim();
-			if (!t) { continue; }
-			if (out.length > 0) {
-				if (/^#{1,3}\s+\S/.test(t)) break;
-				if (/^(##|Out of scope|Scope|Notes?)\b/i.test(t)) break;
-			}
-			const b = t.match(/^(?:[-*+•]\s*|\d+[\).]\s*)((?:\[[ xX]\]\s*)?)(.+)$/);
-			if (b) { out.push(b[2].trim()); continue; }
-			if (out.length > 0 && line.length > 0 && /^\s+/.test(line) && t.length) {
-				out[out.length - 1] = (out[out.length - 1] + " " + t).trim();
-				continue;
-			}
-			if (out.length > 0) { break; }
-		}
-		const dedup = [...new Set(out.map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean))];
-		return dedup.slice(0, 24);
-	};
-
 	// Extract expected files from system prompt or initial messages
 	const systemPromptText = (currentContext as any).systemPrompt || "";
-
-	const getCombinedTaskTextForCriteria = (): string => {
-		let s = String(systemPromptText);
-		for (const msg of currentContext.messages) {
-			if (msg && "content" in msg && Array.isArray((msg as any).content)) {
-				for (const b of (msg as any).content) {
-					if (b?.type === "text" && typeof b.text === "string") s += "\n" + b.text;
-				}
-			}
-		}
-		return s.slice(0, 64_000);
-	};
-
 	let expectedFiles: string[] = parseExpectedFiles(systemPromptText);
 	if (expectedFiles.length === 0) {
 		for (const msg of currentContext.messages) {
@@ -335,17 +294,6 @@ async function runLoop(
 			if (expectedCriteriaCount > 0) break;
 		}
 	}
-
-	/** v235: structured acceptance lines (any task with an "Acceptance criteria:" list). */
-	const combinedTaskTextEarly = getCombinedTaskTextForCriteria();
-	let acceptanceCriteriaBullets: string[] = parseAcceptanceCriteriaBullets(combinedTaskTextEarly);
-	if (acceptanceCriteriaBullets.length > 0) {
-		expectedCriteriaCount = Math.max(expectedCriteriaCount, acceptanceCriteriaBullets.length);
-	}
-
-	/** v233: 1–2 files named in the task — prioritize correctness/depth, not sweeping breadth. */
-	const isNarrowTask = expectedFiles.length >= 1 && expectedFiles.length <= 2;
-
 	if (expectedFiles.length > 0) {
 		foundFiles = [];
 		addFoundFiles(expectedFiles);
@@ -355,19 +303,6 @@ async function runLoop(
 	const MAX_COVERAGE_RETRIES = 3;
 	let criteriaCoverageRetries = 0;
 	const MAX_CRITERIA_COVERAGE_RETRIES = 2;
-	/** v235: nudges to satisfy every parsed acceptance line, not a single "main" change */
-	let taskPromptComplianceRetries = 0;
-	const MAX_TASK_PROMPT_COMPLIANCE = 2;
-
-	/** v233: throttle repeated steering nudges so the model keeps room for the real task. */
-	const nudgeLastFired = new Map<string, number>();
-	const pushSteeringNudge = (id: string, minIntervalMs: number, msg: AgentMessage): void => {
-		const now = Date.now();
-		const last = nudgeLastFired.get(id) ?? 0;
-		if (now - last < minIntervalMs) return;
-		nudgeLastFired.set(id, now);
-		pendingMessages.push(msg);
-	};
 
 	const missingExpectedFiles = (): string[] => {
 		if (expectedFiles.length === 0) return [];
@@ -400,7 +335,7 @@ async function runLoop(
 	};
 
 	const GRACEFUL_EXIT_MS = 290_000;
-	const PREEMPT_EXIT_MS = 120_000; // v91p: proven sweet spot from v89p
+	const PREEMPT_EXIT_MS = 60_000;
 	let reviewPassDone = false;
 
 	/** Successful `edit` or `write` mutates disk — both must advance scoring-related loop state (was edit-only). */
@@ -421,24 +356,17 @@ async function runLoop(
 		const uneditedTargets = foundFiles.filter((f: string) => {
 			return !wasEdited(f);
 		});
-		/** v233: single-file and two-file tasks need more room for careful edits. */
-		const breadthStopAt = isNarrowTask ? 20 : 10;
 		let breadthHint = "";
-		if (consecutiveEditsOnSameFile >= breadthStopAt && uneditedTargets.length > 0) {
+		if (consecutiveEditsOnSameFile >= 5 && uneditedTargets.length > 0) {
 			breadthHint = ` STOP editing \`${normTarget}\` — you have made ${consecutiveEditsOnSameFile} consecutive edits on it. ${uneditedTargets.length} file(s) still need ANY edit: ${uneditedTargets
 				.slice(0, 6)
 				.map((f: string) => `\`${f}\``)
 				.join(", ")}. Move to the next file NOW. One edit per file scores far higher than many edits on one file.`;
 		} else if (uneditedTargets.length > 0) {
-			breadthHint = isNarrowTask
-				? ` ${uneditedTargets.length} other path(s) may still need work: ${uneditedTargets
-						.slice(0, 5)
-						.map((f: string) => `\`${f}\``)
-						.join(", ")}. Re-read the task: only change files the acceptance criteria require, then verify.`
-				: ` ${uneditedTargets.length} target file(s) still need edits: ${uneditedTargets
-						.slice(0, 6)
-						.map((f: string) => `\`${f}\``)
-						.join(", ")}. Move to the next unedited file — breadth across files scores higher than depth in one file.`;
+			breadthHint = ` ${uneditedTargets.length} target file(s) still need edits: ${uneditedTargets
+				.slice(0, 6)
+				.map((f: string) => `\`${f}\``)
+				.join(", ")}. Move to the next unedited file — breadth across files scores higher than depth in one file.`;
 		}
 
 		let siblingHint = "";
