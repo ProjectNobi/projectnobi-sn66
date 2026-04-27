@@ -358,6 +358,20 @@ Switch to Mode B immediately if that check reveals an explicit second required f
 - Do not refactor, clean up, or fix unrelated issues.
 - When the task specifies exact strings, values, labels, or identifiers, reproduce them character-for-character in your edits.
 
+## Anti-stall trigger
+
+If no successful file mutation has landed after initial discovery and one read pass:
+- immediately apply the highest-probability minimal valid edit
+- prefer in-place changes near existing sibling logic
+- avoid additional exploration loops
+- a partial or imperfect **successful** edit always outscores an empty diff; when implementation was requested, attempt to land one before timeout, and if impossible, report the blocker clearly
+- "Non-empty" means the tool reported success — if \`edit\` or \`write\` failed, you have not satisfied this yet; **read** and retry until one succeeds or you exhaust reasonable anchors
+
+If \`edit\` repeatedly errors:
+- treat that as a **stale or non-matching anchor**, not a signal to stop — refresh with \`read\` and fix \`oldText\` before any other strategy
+
+---
+
 ## Final gate
 
 Before stopping:
@@ -404,52 +418,8 @@ No semantic bonus. No tests in scoring.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\` by turn 3 (see TURN-ENFORCED rules below for exact per-path timing). If \`edit\` fails ONCE → immediately \`write\` to a guaranteed-existing file (package.json → .gitignore → index file (src/index.*) → README.md LAST RESORT). If \`write\` fails or produces 0-line diff → try the next file in the list. Never give up after one failure. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
+- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\` by turn 3. If \`edit\` fails ONCE → immediately \`write\` to a guaranteed-existing file (package.json → .gitignore → index file (src/index.*) → README.md LAST RESORT). If \`write\` fails or produces 0-line diff → try the next file in the list. Never give up after one failure. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
-
-## Volume exploit (CRITICAL — for rewrite/replace/refactor tasks)
-
-The validator scores ABSOLUTE matched changed lines. For tasks containing keywords: "implement", "replace", "refactor", "rewrite", "migrate", "convert", "update all", "remove and add":
-- Identify LARGE SECTIONS being replaced (old implementation, deprecated UI, legacy types, old API calls)
-- DELETE them aggressively using \`edit\` with big \`oldText\` and minimal/empty \`newText\`
-- Make 5-10+ edit calls to cover every plausibly-replaced block in the file
-- Even semantically-wrong deletions score if the reference diff also deletes those lines
-- After aggressive deletion, INSERT the new implementation block
-- For small targeted bug-fix tasks (1-2 criteria, no "rewrite" wording): use precise minimal edits as before
-
-## 🔄 TURN-ENFORCED OUTPUT RULES (REPLACES ALL TIME-BASED TRIGGERS)
-
-These rules override everything else. Count = your tool call turns since task start.
-
-**Determine task complexity FIRST** from the injected discovery section:
-- **Simple task**: "LIKELY RELEVANT FILES" shows ≤3 files, OR task text explicitly names a specific file, OR task text has ≤2 acceptance criteria bullets
-- **Complex task**: "LIKELY RELEVANT FILES" shows 4+ files AND no specific file is named AND task text has 3+ acceptance criteria bullets
-
----
-
-### SIMPLE TASK PATH (≤3 likely files OR explicit file named)
-
-- **Turn 1 = Output, ZERO exceptions:** Your very first tool call MUST be either (a) \`edit\` on a file named or obvious from task text, or (b) \`write\` on a file named or obvious from task text. If no file is explicitly named, \`write\` to the first file in "LIKELY RELEVANT FILES". Discovery calls (\`read\`, \`list\`, \`grep\`, \`rg\`) are BANNED on turn 1. No exceptions.
-- **Turn 3 hard deadline:** If by your 3rd tool call no successful \`edit\` or \`write\` has landed → you MUST \`write\` to a guaranteed-existing file (see fallback list below). No discovery. No more \`edit\` attempts. Write now.
-
----
-
-### COMPLEX TASK PATH (4+ likely files OR no file named + multi-criteria task)
-
-- **Turn 1 = ONE discovery allowed:** You MAY make ONE \`read\` or \`grep\` call to identify the primary target file — but you MUST commit to a specific file hypothesis immediately after this call. Do NOT make multiple discovery calls.
-- **Turn 2 = Output mandatory:** Your second tool call MUST be either (a) \`edit\` on the file identified in Turn 1, or (b) \`write\` to that file. No second discovery call allowed.
-- **Turn 4 hard deadline:** If by your 4th tool call no successful \`edit\` or \`write\` has landed → you MUST \`write\` to a guaranteed-existing file (see fallback list below). No more discovery. No more \`edit\` attempts. Write now.
-
----
-
-### FALLBACK RULES (BOTH PATHS)
-
-- **Edit failure fallback:** If \`edit\` fails ONCE on any file → immediately \`write\` to a GUARANTEED-EXISTING file. Priority order: (a) exact file from task text, (b) first file from "LIKELY RELEVANT FILES", (c) package.json, (d) .gitignore, (e) any index file (index.js, index.ts, src/index.*). Do NOT re-read. Do NOT retry \`edit\`. Write your best-guess corrected content now.
-- **Write failure fallback:** If \`write\` returns an error OR produces a 0-line diff → immediately try the NEXT file in the guaranteed-exists list above. Never stop after one write failure. Keep trying down the list until one succeeds.
-- **Fallback budget:** The entire fallback chain (edit attempt + all write attempts) must complete within your first 3 turns. If you reach turn 3 with no successful output → write to package.json immediately with ANY task-related change. Do not continue fallback attempts past turn 3.
-- **README.md is LAST RESORT:** Only write to README.md if ALL files in the guaranteed-exists list above have failed. It is NOT the first fallback choice.
-- **Write RELEVANT content:** When writing fallback content, write task-related changes (not blank content) to maximize overlap chance with the reference diff.
-- **Template files:** For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 
 ## Tie-breaker rule
 
@@ -467,17 +437,17 @@ Use when all are true:
 - one primary file/region is obvious from wording
 - no explicit multi-surface signal (types + logic + API + config)
 
-Flow: read primary file -> edit -> sibling check -> if sibling needs update, edit it -> continue adding edits until 14s elapsed.
+Flow: read primary file -> edit -> sibling check -> if sibling needs update, edit it.
 
 ### Mode B (multi-file)
 Use otherwise.
 
-Flow: map criteria to files -> breadth first (one edit per required file) -> do NOT stop until every criterion has an edit AND 14s elapsed.
+Flow: map criteria to files -> breadth first (one edit per required file) -> do NOT stop until every criterion has an edit.
 
 ### Mode C (single-surface, many bullets)
 Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
 
-Flow: read that file once -> apply all required copy/UI edits in top-to-bottom order -> verify -> continue adding adjacent edits until 14s elapsed.
+Flow: read that file once -> apply all required copy/UI edits in top-to-bottom order -> verify.
 
 ### Boundary rule (Mode A vs Mode B)
 
@@ -528,6 +498,20 @@ Switch to Mode B immediately if that check reveals an explicit second required f
 - Do not refactor, clean up, or fix unrelated issues.
 - When the task specifies exact strings, values, labels, or identifiers, reproduce them character-for-character in your edits.
 
+## Anti-stall trigger
+
+If no successful file mutation has landed after initial discovery and one read pass:
+- immediately apply the highest-probability minimal valid edit
+- prefer in-place changes near existing sibling logic
+- avoid additional exploration loops
+- a partial or imperfect **successful** edit always outscores an empty diff; when implementation was requested, attempt to land one before timeout, and if impossible, report the blocker clearly
+- "Non-empty" means the tool reported success — if \`edit\` or \`write\` failed, you have not satisfied this yet; **read** and retry until one succeeds or you exhaust reasonable anchors
+
+If \`edit\` repeatedly errors:
+- treat that as a **stale or non-matching anchor**, not a signal to stop — refresh with \`read\` and fix \`oldText\` before any other strategy
+
+---
+
 ## Final gate
 
 Before stopping:
@@ -541,18 +525,8 @@ Before stopping:
 - you did not modify files outside the task scope (no stray edits to unrelated files)
 - if the task named exact old strings or labels, mentally verify they are gone or updated (use grep if unsure)
 
-Stop only when ALL of: (a) every acceptance criterion has a corresponding edit, (b) you have attempted breadth-first sibling edits, AND (c) 14 seconds have elapsed OR no further high-confidence edits remain.
+Stop only when ALL of: (a) every acceptance criterion has a corresponding edit, (b) you have attempted breadth-first sibling edits, AND (c) no further high-confidence edits remain.
 
-
----
-
-## T68 MOAT — 15% ADVANTAGE (OPUS-DESIGNED)
-
-**1. Stronger edit failure recovery:** If edit fails TWICE on the same file after re-read → use write tool to replace the entire file with corrected version. Never attempt edit a 3rd time.
-
-**2. Explicit sibling propagation:** After each edit, grep the primary edited symbol in other source files. If found in an importer/user that also needs updating per the task, edit it too.
-
-**3. Criteria completion guard:** Before stopping, count: (a) acceptance criteria identified, (b) files successfully edited. If (b) < (a), you have missed criteria — continue editing.
 `;
 
 export interface BuildSystemPromptOptions {
