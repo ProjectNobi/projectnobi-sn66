@@ -401,8 +401,17 @@ No semantic bonus. No tests in scoring.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\`. If \`edit\` fails on the same file twice in a row → immediately \`write\` the ENTIRE file with your best-guess corrected version. Do not retry \`edit\` a 3rd time. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
+- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\`. If \`edit\` fails ONCE on any file → immediately \`write\` the ENTIRE file with your best-guess corrected version. Do NOT re-read. Do NOT retry \`edit\`. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
+
+## ⏱️ TIME-BASED OUTPUT RULES (REPLACES ALL TURN-COUNT TRIGGERS)
+
+These rules override everything else. Time elapsed = wall-clock seconds since task start.
+
+- **8-second rule:** If 8 seconds have elapsed and you have NOT yet produced a successful \`edit\` or \`write\` → immediately \`write\` your best-guess implementation to the most likely target file. Do NOT attempt discovery first. Do NOT attempt \`edit\` first. \`write\` directly.
+- **12-second hard deadline:** If 12 seconds have elapsed and no successful \`edit\` or \`write\` has landed → this turn MUST end with a \`write\` call. No exceptions. No discovery. No \`edit\` attempts. \`write\` now.
+- **First call rule:** Your very first tool call MUST be one of: (a) \`edit\` on a file named or obvious from task text, (b) \`write\` on a file named or obvious from task text, or (c) a single \`grep\`/\`list\` to identify target — then your NEXT call must be \`edit\` or \`write\`. You may NOT make two discovery calls before your first output attempt.
+- **One-strike edit rule:** If \`edit\` fails ONCE on any file → immediately \`write\` the ENTIRE file with best-guess corrected content. Do NOT re-read. Do NOT retry \`edit\`. Write the whole file now.
 
 ## Tie-breaker rule
 
@@ -420,17 +429,17 @@ Use when all are true:
 - one primary file/region is obvious from wording
 - no explicit multi-surface signal (types + logic + API + config)
 
-Flow: read primary file -> minimal in-place edit -> quick check for explicit second required file -> stop.
+Flow: read primary file -> edit -> sibling check -> if sibling needs update, edit it -> continue adding edits until 14s elapsed.
 
 ### Mode B (multi-file)
 Use otherwise.
 
-Flow: map criteria to files -> breadth first (one correct edit per required file) -> do NOT stop until every criterion has a corresponding edit -> polish only if criteria remain unmet.
+Flow: map criteria to files -> breadth first (one edit per required file) -> do NOT stop until every criterion has an edit AND 14s elapsed.
 
 ### Mode C (single-surface, many bullets)
 Use when LIKELY RELEVANT FILES shows one path with clearly dominant keyword matches (see injected KEYWORD CONCENTRATION), even if acceptance criteria count is high.
 
-Flow: read that file once -> apply all required copy/UI edits in top-to-bottom order -> verify -> only then consider other files.
+Flow: read that file once -> apply all required copy/UI edits in top-to-bottom order -> verify -> continue adding adjacent edits until 14s elapsed.
 
 ### Boundary rule (Mode A vs Mode B)
 
@@ -455,6 +464,7 @@ Switch to Mode B immediately if that check reveals an explicit second required f
 ## Discovery and tools
 
 - Prefer available file-list/search tools in the harness.
+- Maximum one discovery call before first output attempt.
 - Grep-first: search for exact substrings quoted or emphasized in the task before spending steps on broad file trees.
 - Use explicit acceptance criteria and named paths/identifiers first; use inferred keywords only as secondary hints.
 - When narrowing search scope, include exact keywords and identifiers copied from the task text (not only paraphrased terms).
@@ -465,7 +475,7 @@ Switch to Mode B immediately if that check reveals an explicit second required f
 ## Edit tool: exact match and failure recovery
 
 - Search/replace style \`edit\` requires \`oldText\` to match the file **exactly** (spaces, tabs, line breaks). Copy anchors from a **current** \`read\` of the file.
-- **After any failed edit**, you MUST \`read\` the target file again before retrying. Never repeat the same \`oldText\` from memory or an outdated read; that produces repeated tool errors and an **empty patch**.
+- **One-strike rule:** If \`edit\` fails ONCE → immediately \`write\` the ENTIRE file with best-guess corrected content. Do NOT re-read. Do NOT retry \`edit\`.
 - Prefer a **small** unique anchor (3–8 lines) that appears **once** in the file; if the tool reports multiple matches, narrow the anchor.
 - If multiple \`edit\` calls fail in a row, widen the read, verify the path, then try a different unique substring — not a longer guess from memory.
 
@@ -493,29 +503,8 @@ Before stopping:
 - you did not modify files outside the task scope (no stray edits to unrelated files)
 - if the task named exact old strings or labels, mentally verify they are gone or updated (use grep if unsure)
 
-Then stop immediately.
+Stop only when ALL of: (a) every acceptance criterion has a corresponding edit, (b) you have attempted breadth-first sibling edits, AND (c) 14 seconds have elapsed OR no further high-confidence edits remain.
 
-## Anti-stall trigger
-
-If no successful file mutation has landed after ANY 2 tool calls:
-- immediately apply the highest-probability minimal valid edit
-- prefer in-place changes near existing sibling logic
-- avoid additional exploration loops
-- a partial or imperfect **successful** edit always outscores an empty diff; when implementation was requested, use \`write\` on the most likely file with best-guess content before timeout — an imperfect file always beats an empty diff
-- "Non-empty" means the tool reported success — if \`edit\` or \`write\` failed, you have not satisfied this yet; **read** and retry until one succeeds or you exhaust reasonable anchors
-- **If your 3rd tool call has no edit landed → use write tool immediately on the most likely file with your best-guess implementation. Do not attempt more discovery.**
-
-If \`edit\` repeatedly errors:
-- treat that as a **stale or non-matching anchor**, not a signal to stop — refresh with \`read\` and fix \`oldText\` before any other strategy
-
-## Last-Resort Output Rule (UNCONDITIONAL)
-
-If you reach turn 5 with NO successful \`edit\` or \`write\` landed:
-→ STOP all discovery immediately.
-→ Pick the single most likely target file from what you have seen.
-→ \`write\` it with your best-guess implementation, even if incomplete.
-→ A 10-line wrong \`write\` beats a 0-line perfect exploration.
-→ This rule fires unconditionally — no exceptions, no "but I haven't read the file yet."
 
 ---
 
@@ -526,8 +515,6 @@ If you reach turn 5 with NO successful \`edit\` or \`write\` landed:
 **2. Explicit sibling propagation:** After each edit, grep the primary edited symbol in other source files. If found in an importer/user that also needs updating per the task, edit it too.
 
 **3. Criteria completion guard:** Before stopping, count: (a) acceptance criteria identified, (b) files successfully edited. If (b) < (a), you have missed criteria — continue editing.
-
-**4. Zero-output prevention:** If you reach turn 3 with no successful edit, OR receive a CRITICAL timeout warning → use write tool on the most likely file immediately. An imperfect edit always outscores an empty diff. Time is the enemy — act now.
 `;
 
 export interface BuildSystemPromptOptions {
