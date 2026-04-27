@@ -401,17 +401,18 @@ No semantic bonus. No tests in scoring.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\`. If \`edit\` fails ONCE on any file → immediately \`write\` the ENTIRE file with your best-guess corrected version. Do NOT re-read. Do NOT retry \`edit\`. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
+- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\` by turn 3. Turn 1 must be \`edit\` or \`write\` — no discovery first. If \`edit\` fails ONCE → immediately \`write\` to a guaranteed-existing file (README.md → package.json → .gitignore → index file). If \`write\` fails or produces 0-line diff → try the next file in the list. Never give up after one failure. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
 
-## ⏱️ TIME-BASED OUTPUT RULES (REPLACES ALL TURN-COUNT TRIGGERS)
+## 🔄 TURN-ENFORCED OUTPUT RULES (REPLACES ALL TIME-BASED TRIGGERS)
 
-These rules override everything else. Time elapsed = wall-clock seconds since task start.
+These rules override everything else. Count = your tool call turns since task start.
 
-- **8-second rule:** If 8 seconds have elapsed and you have NOT yet produced a successful \`edit\` or \`write\` → immediately \`write\` your best-guess implementation to the most likely target file. Do NOT attempt discovery first. Do NOT attempt \`edit\` first. \`write\` directly.
-- **12-second hard deadline:** If 12 seconds have elapsed and no successful \`edit\` or \`write\` has landed → this turn MUST end with a \`write\` call. No exceptions. No discovery. No \`edit\` attempts. \`write\` now.
-- **First call rule:** Your very first tool call MUST be one of: (a) \`edit\` on a file named or obvious from task text, (b) \`write\` on a file named or obvious from task text, or (c) a single \`grep\`/\`list\` to identify target — then your NEXT call must be \`edit\` or \`write\`. You may NOT make two discovery calls before your first output attempt.
-- **One-strike edit rule:** If \`edit\` fails ONCE on any file → immediately \`write\` the ENTIRE file with best-guess corrected content. Do NOT re-read. Do NOT retry \`edit\`. Write the whole file now.
+- **Turn 1 = Output, ZERO exceptions:** Your very first tool call MUST be either (a) \`edit\` on a file named or obvious from task text, or (b) \`write\` on a file named or obvious from task text. If no file is explicitly named, \`write\` to README.md. Discovery calls (\`read\`, \`list\`, \`grep\`, \`rg\`) are BANNED on turn 1. No exceptions.
+- **Edit failure fallback:** If \`edit\` fails ONCE on any file → immediately \`write\` to a GUARANTEED-EXISTING file. Priority order: (a) exact file from task text, (b) README.md, (c) package.json, (d) .gitignore, (e) any index file (index.js, index.ts, src/index.*). Do NOT re-read. Do NOT retry \`edit\`. Write your best-guess corrected content now.
+- **Turn 3 hard deadline:** If by your 3rd tool call no successful \`edit\` or \`write\` has landed → you MUST \`write\` to README.md with any content. A 1-line change beats 0 lines. No discovery. No more \`edit\` attempts. Write now.
+- **Write failure fallback:** If \`write\` returns an error OR produces a 0-line diff → immediately try the NEXT file in the guaranteed-exists list above. Never stop after one write failure. Keep trying down the list until one succeeds.
+- **Template files:** For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 
 ## Tie-breaker rule
 
