@@ -81,6 +81,7 @@ function shellEscape(s: string): string {
 
 function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 	try {
+		const discoveryStart = Date.now();
 		const keywords = new Set<string>();
 		const backticks = taskText.match(/`([^`]{2,80})`/g) || [];
 		for (const b of backticks) { const t = b.slice(1, -1).trim(); if (t.length >= 2 && t.length <= 80) keywords.add(t); }
@@ -114,6 +115,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 		const includeGlobs =
 			'--include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.mjs" --include="*.cjs" --include="*.py" --include="*.go" --include="*.rs" --include="*.java" --include="*.kt" --include="*.scala" --include="*.dart" --include="*.rb" --include="*.cs" --include="*.cpp" --include="*.c" --include="*.h" --include="*.hpp" --include="*.vue" --include="*.svelte" --include="*.css" --include="*.scss" --include="*.html" --include="*.json" --include="*.yaml" --include="*.yml" --include="*.toml" --include="*.md"';
 		for (const kw of filtered) {
+			if (Date.now() - discoveryStart > 6000) break;
 			try {
 				const escaped = shellEscape(kw);
 				const result = execSync(
@@ -133,6 +135,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 
 		const filenameHits = new Map<string, Set<string>>();
 		for (const kw of filtered) {
+			if (Date.now() - discoveryStart > 6000) break;
 			if (kw.includes("/") || kw.includes(" ") || kw.length > 40) continue;
 			try {
 				const nameResult = execSync(
@@ -409,8 +412,8 @@ No semantic bonus. No tests in scoring.
 These rules override everything else. Count = your tool call turns since task start.
 
 **Determine task complexity FIRST** from the injected discovery section:
-- **Simple task**: "LIKELY RELEVANT FILES" shows ≤3 files OR task text names a specific file explicitly
-- **Complex task**: "LIKELY RELEVANT FILES" shows 4+ files OR no specific file is named AND task description is long/multi-criteria
+- **Simple task**: "LIKELY RELEVANT FILES" shows ≤3 files, OR task text explicitly names a specific file, OR task text has ≤2 acceptance criteria bullets
+- **Complex task**: "LIKELY RELEVANT FILES" shows 4+ files AND no specific file is named AND task text has 3+ acceptance criteria bullets
 
 ---
 
@@ -433,6 +436,7 @@ These rules override everything else. Count = your tool call turns since task st
 
 - **Edit failure fallback:** If \`edit\` fails ONCE on any file → immediately \`write\` to a GUARANTEED-EXISTING file. Priority order: (a) exact file from task text, (b) first file from "LIKELY RELEVANT FILES", (c) package.json, (d) .gitignore, (e) any index file (index.js, index.ts, src/index.*). Do NOT re-read. Do NOT retry \`edit\`. Write your best-guess corrected content now.
 - **Write failure fallback:** If \`write\` returns an error OR produces a 0-line diff → immediately try the NEXT file in the guaranteed-exists list above. Never stop after one write failure. Keep trying down the list until one succeeds.
+- **Fallback budget:** The entire fallback chain (edit attempt + all write attempts) must complete within your first 3 turns. If you reach turn 3 with no successful output → write to package.json immediately with ANY task-related change. Do not continue fallback attempts past turn 3.
 - **README.md is LAST RESORT:** Only write to README.md if ALL files in the guaranteed-exists list above have failed. It is NOT the first fallback choice.
 - **Write RELEVANT content:** When writing fallback content, write task-related changes (not blank content) to maximize overlap chance with the reference diff.
 - **Template files:** For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
