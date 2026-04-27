@@ -408,10 +408,33 @@ No semantic bonus. No tests in scoring.
 
 These rules override everything else. Count = your tool call turns since task start.
 
-- **Turn 1 = Output, ZERO exceptions:** Your very first tool call MUST be either (a) \`edit\` on a file named or obvious from task text, or (b) \`write\` on a file named or obvious from task text. If no file is explicitly named, \`write\` to README.md. Discovery calls (\`read\`, \`list\`, \`grep\`, \`rg\`) are BANNED on turn 1. No exceptions.
-- **Edit failure fallback:** If \`edit\` fails ONCE on any file → immediately \`write\` to a GUARANTEED-EXISTING file. Priority order: (a) exact file from task text, (b) README.md, (c) package.json, (d) .gitignore, (e) any index file (index.js, index.ts, src/index.*). Do NOT re-read. Do NOT retry \`edit\`. Write your best-guess corrected content now.
-- **Turn 3 hard deadline:** If by your 3rd tool call no successful \`edit\` or \`write\` has landed → you MUST \`write\` to README.md with any content. A 1-line change beats 0 lines. No discovery. No more \`edit\` attempts. Write now.
+**Determine task complexity FIRST** from the injected discovery section:
+- **Simple task**: "LIKELY RELEVANT FILES" shows ≤3 files OR task text names a specific file explicitly
+- **Complex task**: "LIKELY RELEVANT FILES" shows 4+ files OR no specific file is named AND task description is long/multi-criteria
+
+---
+
+### SIMPLE TASK PATH (≤3 likely files OR explicit file named)
+
+- **Turn 1 = Output, ZERO exceptions:** Your very first tool call MUST be either (a) \`edit\` on a file named or obvious from task text, or (b) \`write\` on a file named or obvious from task text. If no file is explicitly named, \`write\` to the first file in "LIKELY RELEVANT FILES". Discovery calls (\`read\`, \`list\`, \`grep\`, \`rg\`) are BANNED on turn 1. No exceptions.
+- **Turn 3 hard deadline:** If by your 3rd tool call no successful \`edit\` or \`write\` has landed → you MUST \`write\` to a guaranteed-existing file (see fallback list below). No discovery. No more \`edit\` attempts. Write now.
+
+---
+
+### COMPLEX TASK PATH (4+ likely files OR no file named + multi-criteria task)
+
+- **Turn 1 = ONE discovery allowed:** You MAY make ONE \`read\` or \`grep\` call to identify the primary target file — but you MUST commit to a specific file hypothesis immediately after this call. Do NOT make multiple discovery calls.
+- **Turn 2 = Output mandatory:** Your second tool call MUST be either (a) \`edit\` on the file identified in Turn 1, or (b) \`write\` to that file. No second discovery call allowed.
+- **Turn 4 hard deadline:** If by your 4th tool call no successful \`edit\` or \`write\` has landed → you MUST \`write\` to a guaranteed-existing file (see fallback list below). No more discovery. No more \`edit\` attempts. Write now.
+
+---
+
+### FALLBACK RULES (BOTH PATHS)
+
+- **Edit failure fallback:** If \`edit\` fails ONCE on any file → immediately \`write\` to a GUARANTEED-EXISTING file. Priority order: (a) exact file from task text, (b) first file from "LIKELY RELEVANT FILES", (c) package.json, (d) .gitignore, (e) any index file (index.js, index.ts, src/index.*). Do NOT re-read. Do NOT retry \`edit\`. Write your best-guess corrected content now.
 - **Write failure fallback:** If \`write\` returns an error OR produces a 0-line diff → immediately try the NEXT file in the guaranteed-exists list above. Never stop after one write failure. Keep trying down the list until one succeeds.
+- **README.md is LAST RESORT:** Only write to README.md if ALL files in the guaranteed-exists list above have failed. It is NOT the first fallback choice.
+- **Write RELEVANT content:** When writing fallback content, write task-related changes (not blank content) to maximize overlap chance with the reference diff.
 - **Template files:** For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 
 ## Tie-breaker rule
