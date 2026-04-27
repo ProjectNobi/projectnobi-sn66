@@ -512,6 +512,10 @@ If \`edit\` repeatedly errors:
 
 ---
 
+## Volume guard
+
+Pre-emptive file gutting only activates for volume-detected tasks. For small tasks (< 80 lines, no rewrite/implement signal), use minimal targeted edits only — do not randomly delete unrelated content.
+
 ## Final gate
 
 Before stopping:
