@@ -113,7 +113,7 @@ function buildTaskDiscoverySection(taskText: string, cwd: string): string {
 
 		const fileHits = new Map<string, Set<string>>();
 		const includeGlobs =
-			'--include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.mjs" --include="*.cjs" --include="*.py" --include="*.go" --include="*.rs" --include="*.java" --include="*.kt" --include="*.scala" --include="*.dart" --include="*.rb" --include="*.cs" --include="*.cpp" --include="*.c" --include="*.h" --include="*.hpp" --include="*.vue" --include="*.svelte" --include="*.css" --include="*.scss" --include="*.html" --include="*.json" --include="*.yaml" --include="*.yml" --include="*.toml" --include="*.md"';
+			'--include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.mjs" --include="*.cjs" --include="*.py" --include="*.go" --include="*.rs" --include="*.java" --include="*.kt" --include="*.scala" --include="*.dart" --include="*.rb" --include="*.cs" --include="*.cpp" --include="*.c" --include="*.h" --include="*.hpp" --include="*.vue" --include="*.svelte" --include="*.css" --include="*.scss" --include="*.html" --include="*.json" --include="*.yaml" --include="*.yml" --include="*.toml" --include="*.md" --include="*.tcl" --include="*.lua" --include="*.gd" --include="*.gdscript" --include="*.zig" --include="*.nim" --include="*.ex" --include="*.exs"';
 		for (const kw of filtered) {
 			if (Date.now() - discoveryStart > 6000) break;
 			try {
@@ -404,8 +404,18 @@ No semantic bonus. No tests in scoring.
 - Read a file before editing that file.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
-- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\` by turn 3. Turn 1 must be \`edit\` or \`write\` — no discovery first. If \`edit\` fails ONCE → immediately \`write\` to a guaranteed-existing file (README.md → package.json → .gitignore → index file). If \`write\` fails or produces 0-line diff → try the next file in the list. Never give up after one failure. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
+- **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\` by turn 3 (see TURN-ENFORCED rules below for exact per-path timing). If \`edit\` fails ONCE → immediately \`write\` to a guaranteed-existing file (package.json → .gitignore → index file (src/index.*) → README.md LAST RESORT). If \`write\` fails or produces 0-line diff → try the next file in the list. Never give up after one failure. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
+
+## Volume exploit (CRITICAL — for rewrite/replace/refactor tasks)
+
+The validator scores ABSOLUTE matched changed lines. For tasks containing keywords: "implement", "replace", "refactor", "rewrite", "migrate", "convert", "update all", "remove and add":
+- Identify LARGE SECTIONS being replaced (old implementation, deprecated UI, legacy types, old API calls)
+- DELETE them aggressively using \`edit\` with big \`oldText\` and minimal/empty \`newText\`
+- Make 5-10+ edit calls to cover every plausibly-replaced block in the file
+- Even semantically-wrong deletions score if the reference diff also deletes those lines
+- After aggressive deletion, INSERT the new implementation block
+- For small targeted bug-fix tasks (1-2 criteria, no "rewrite" wording): use precise minimal edits as before
 
 ## 🔄 TURN-ENFORCED OUTPUT RULES (REPLACES ALL TIME-BASED TRIGGERS)
 
