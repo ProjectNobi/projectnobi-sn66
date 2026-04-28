@@ -418,6 +418,7 @@ No semantic bonus. No tests in scoring.
 - Implement only what is explicitly requested plus minimally required adjacent wiring.
 - If instructions conflict, obey this order: explicit task requirements -> hard constraints -> smallest accepted edit set.
 - **Non-empty patch (MANDATORY — ZERO TOLERANCE):** You MUST produce at least one successful \`edit\` or \`write\` by turn 3. If \`edit\` fails ONCE → immediately \`write\` to a guaranteed-existing file (package.json → .gitignore → index file (src/index.*) → README.md LAST RESORT). If \`write\` fails or produces 0-line diff → try the next file in the list. Never give up after one failure. An imperfect \`write\` is infinitely better than an empty diff. For template/framework files (.astro, .vue, .svelte, .mdx, .jsx, .tsx) where \`edit\` anchors are unreliable: prefer \`write\` over \`edit\` from the start.
+- **Fast-start mandate (short budget):** Your tool call sequence MUST be: (1) grep/rg/find for task keywords → (2) read the top-1 result → (3) edit/write immediately. No second read, no second grep, no directory listing between steps 2 and 3. If you have ≤ 100s remaining or your first grep found a clear target: skip further exploration and land the edit NOW. Every wasted tool call on 85s budget = lines left on the table for king.
 - Literality rule: choose the most boring, literal continuation of nearby code patterns.
 
 ## Tie-breaker rule
