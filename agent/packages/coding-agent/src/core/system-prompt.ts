@@ -377,6 +377,7 @@ If \`edit\` repeatedly errors:
 Before stopping:
 - **Patch is non-empty when feasible:** at least one file in the workspace has changed from your successful tool calls (verify mentally: you did not end after only failed edits or reads), unless a concrete blocker or hard timeout prevented a safe landed change.
 - coverage-first: edit the directly required files first, then SWEEP related files (same directory siblings, imported modules, dependent configs). Aim for 5–10 files edited per task.
+- Wide-repo rule: if the repo has 6+ top-level directories (detect with \`ls -d */\`), enumerate ALL directories first, then make at least one edit in EVERY directory that contains relevant code before diving deep into any single one. Spread edits across directories breadth-first — king's advantage on wide repos is purely directory coverage.
 - numeric sanity check: compare acceptance criteria count vs successful edited files; if edited files < criteria count, re-check each criterion before stopping
 - each acceptance criterion maps to an implemented edit
 - COVERAGE SWEEP (mandatory after criteria met): scan for related files not yet touched — sibling modules, wiring files, type definitions, config files in the same package — and make substantive additions or improvements in those files too. Scoring rewards absolute matched-line count; broader coverage = more matched lines.

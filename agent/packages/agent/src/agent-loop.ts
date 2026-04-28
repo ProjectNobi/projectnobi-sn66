@@ -160,6 +160,17 @@ async function runLoop(
 	emit: AgentEventSink,
 	streamFn?: StreamFn,
 ): Promise<void> {
+	// v115p: Watchdog AbortController — chains to the outer signal so we can
+	// interrupt mid-LLM-call when HARD_ABORT approaches. Without this, a slow
+	// LLM fetch blocks past container SIGKILL → all in-container changes lost.
+	const watchdog = new AbortController();
+	const externalSignal = signal;
+	if (externalSignal) {
+		if (externalSignal.aborted) watchdog.abort();
+		else externalSignal.addEventListener("abort", () => watchdog.abort(), { once: true });
+	}
+	signal = watchdog.signal;
+
 	let firstTurn = true;
 	// Check for steering messages at start (user may have typed while waiting)
 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
@@ -341,7 +352,13 @@ async function runLoop(
 	const _isShortBudget = _budgetMs < 150_000;
 	const GRACEFUL_EXIT_MS = Math.max(15_000, Math.floor(_budgetMs * (_isShortBudget ? 0.90 : 0.85)));
 	const PREEMPT_EXIT_MS = Math.max(10_000, Math.floor(_budgetMs * 0.70));
-	const HARD_ABORT_MS = Math.max(GRACEFUL_EXIT_MS + 3_000, Math.floor(_budgetMs * 0.95));
+	const HARD_ABORT_MS = Math.max(GRACEFUL_EXIT_MS + 3_000, Math.floor(_budgetMs * 0.92));
+	// v115p: fire watchdog abort at HARD_ABORT to interrupt stalled LLM streams
+	const _watchdogTimer = setTimeout(() => {
+		try { watchdog.abort(); } catch { /* ignore */ }
+	}, HARD_ABORT_MS);
+	if (typeof (_watchdogTimer as any).unref === "function") (_watchdogTimer as any).unref();
+
 	const EARLY_NUDGE_MS = 25_000;
 	const LATE_NUDGE_MS = 55_000;
 	let reviewPassDone = false;
