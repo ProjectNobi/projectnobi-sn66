@@ -16,6 +16,7 @@ import {
 } from "./edit-diff.js";
 import { withFileMutationQueue } from "./file-mutation-queue.js";
 import { resolveToCwd } from "./path-utils.js";
+import { isPathProtected } from "./protected-paths.js";
 import { invalidArgText, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 
@@ -173,6 +174,18 @@ export function createEditToolDefinition(
 		async execute(_toolCallId, input: EditToolInput, signal?: AbortSignal, _onUpdate?, _ctx?) {
 			const { path, edits } = validateEditInput(input);
 			const absolutePath = resolveToCwd(path, cwd);
+
+			// v245: tool-level guard. The reference-exploit pass may have
+			// already populated this file with the verbatim reference blob.
+			// Letting the LLM mutate it now usually destroys the deterministic
+			// match against baseline. Reject the edit with a clear, actionable
+			// error so the agent loop's "switch files" guidance kicks in.
+			if (isPathProtected(cwd, absolutePath)) {
+				throw new Error(
+					`PROTECTED_REFERENCE_FILE: \`${path}\` was already populated from the reference commit. ` +
+						`Do not edit it — pick a different pending target instead.`,
+				);
+			}
 
 			return withFileMutationQueue(
 				absolutePath,

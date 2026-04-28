@@ -912,6 +912,23 @@ async function runLoop(
 						if (!targetPath || typeof targetPath !== "string") continue;
 						if (isRealUnixFile(targetPath) == false) continue;
 						if (tr.isError) {
+							const writeErrText = tr.content?.map((c: any) => c.text ?? "").join("") ?? "";
+							// v245: protected paths block — pivot to a pending target.
+							if (writeErrText.includes("PROTECTED_REFERENCE_FILE")) {
+								const normTarget = targetPath.replace(/^\.\//,"");
+								editedPaths.add(normTarget);
+								const uneditedTargets = foundFiles.filter((f: string) => !wasEdited(f));
+								const list = uneditedTargets.slice(0, 5).map((f: string) => `\`${f}\``).join(", ");
+								pendingMessages.push({
+									role: "user",
+									content: [{ type: "text", text:
+										`\`${targetPath}\` is already populated from the reference commit and is protected — do NOT retry. ` +
+										(list ? `Move to a pending target: ${list}.` : `Use \`bash\` to discover which task files still need edits, then edit those.`),
+									}],
+									timestamp: Date.now(),
+								});
+								continue;
+							}
 							pendingMessages.push({
 								role: "user",
 								content: [
@@ -938,6 +955,27 @@ async function runLoop(
 						const anchorText = (tc.arguments as any)?.old_string ?? (tc.arguments as any)?.oldText ?? "";
 						const errText = tr.content?.map((c: any) => c.text ?? "").join("") ?? "";
 						const prevAnchor = priorFailedAnchor.get(targetPath);
+
+						// v245: special-case the protected-path tool guard. The reference
+						// exploit already wrote the canonical content for this file; the
+						// LLM should pivot to a pending file rather than retry.
+						if (errText.includes("PROTECTED_REFERENCE_FILE")) {
+							const normTarget = targetPath.replace(/^\.\//,"");
+							editedPaths.add(normTarget);
+							const uneditedTargets = foundFiles.filter((f: string) => !wasEdited(f));
+							const list = uneditedTargets.slice(0, 5).map((f: string) => `\`${f}\``).join(", ");
+							pendingMessages.push({
+								role: "user",
+								content: [{
+									type: "text",
+									text:
+										`\`${targetPath}\` is already populated from the reference commit and is protected — do NOT retry it. ` +
+										(list ? `Move to a pending target: ${list}.` : `Use \`bash\` to discover which task files still need edits, then edit those.`),
+								}],
+								timestamp: Date.now(),
+							});
+							continue;
+						}
 
 						if (/\d+ occurrences/.test(errText)) {
 							pendingMessages.push({ role: "user", content: [{ type: "text", text: `Edit failed: oldText matches multiple locations in \`${targetPath}\`. Add more surrounding lines to your oldText to make it unique. Use \`read\` with a small \`limit\`/\`offset\` to see the exact context at the right location.` }], timestamp: Date.now() });

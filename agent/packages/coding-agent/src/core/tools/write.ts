@@ -8,6 +8,7 @@ import { getLanguageFromPath, highlightCode } from "../../modes/interactive/them
 import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.js";
 import { withFileMutationQueue } from "./file-mutation-queue.js";
 import { resolveToCwd } from "./path-utils.js";
+import { isPathProtected } from "./protected-paths.js";
 import { invalidArgText, normalizeDisplayText, replaceTabs, shortenPath, str } from "./render-utils.js";
 import { wrapToolDefinition } from "./tool-definition-wrapper.js";
 
@@ -200,6 +201,13 @@ export function createWriteToolDefinition(
 		) {
 			const absolutePath = resolveToCwd(path, cwd);
 			const dir = dirname(absolutePath);
+			// v245: see edit.ts — refuse to overwrite reference-blob content.
+			if (isPathProtected(cwd, absolutePath)) {
+				throw new Error(
+					`PROTECTED_REFERENCE_FILE: \`${path}\` was already populated from the reference commit. ` +
+						`Do not write to it — pick a different pending target instead.`,
+				);
+			}
 			return withFileMutationQueue(
 				absolutePath,
 				() =>
