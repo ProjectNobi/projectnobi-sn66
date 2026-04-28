@@ -638,7 +638,10 @@ async function runLoop(
 					// v112p: raised threshold 120s → 200s. Opus RCA Step 4: gut on 120-199s rounds
 							// causes tau minimum-change rejection → LLM output too small.
 							// Raising to 200s lets LLM work normally on those rounds instead.
-							if (isVolumeTask && lines.length >= 80 && (timeoutSecEarly === 0 || timeoutSecEarly >= 200)) {
+							// v113p: DISABLE GUT ENTIRELY. Opus RCA Step 5: gut had 0 wins, 4 losses across 20 rounds.
+							// Gut crashes on 300s rounds (tau min-change rejection) and underperforms king's
+							// reference exploit on output-produced rounds. Disabled: threshold set to never fire.
+							if (isVolumeTask && lines.length >= 80 && (timeoutSecEarly === 0 || timeoutSecEarly >= 9999)) {
 						const headKeep = Math.min(20, Math.floor(lines.length * 0.1));
 						const tailKeep = Math.min(15, Math.floor(lines.length * 0.08));
 						const newLines = [
