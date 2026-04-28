@@ -376,13 +376,11 @@ If \`edit\` repeatedly errors:
 
 Before stopping:
 - **Patch is non-empty when feasible:** at least one file in the workspace has changed from your successful tool calls (verify mentally: you did not end after only failed edits or reads), unless a concrete blocker or hard timeout prevented a safe landed change.
-- coverage is requirement-first, not file-count-first: expand to another file only when an explicit criterion, named path, or required nearby wiring is still unmet
-- numeric sanity check: compare acceptance criteria count vs successful edited files; if edited files < criteria count, assume likely under-coverage and re-check each criterion before stopping
+- coverage-first: edit the directly required files first, then SWEEP related files (same directory siblings, imported modules, dependent configs). Aim for 5–10 files edited per task.
+- numeric sanity check: compare acceptance criteria count vs successful edited files; if edited files < criteria count, re-check each criterion before stopping
 - each acceptance criterion maps to an implemented edit
-- if edited files < criteria count, re-check for missed criteria before stopping
+- COVERAGE SWEEP (mandatory after criteria met): scan for related files not yet touched — sibling modules, wiring files, type definitions, config files in the same package — and make substantive additions or improvements in those files too. Scoring rewards absolute matched-line count; broader coverage = more matched lines.
 - no explicitly required file is missed
-- no unnecessary changes were introduced
-- you did not modify files outside the task scope (no stray edits to unrelated files)
 - if the task named exact old strings or labels, mentally verify they are gone or updated (use grep if unsure)
 
 Then stop immediately.
@@ -514,7 +512,7 @@ If \`edit\` repeatedly errors:
 
 ## Volume guard
 
-Pre-emptive file gutting only activates for volume-detected tasks. For small tasks (< 80 lines, no rewrite/implement signal), use minimal targeted edits only — do not randomly delete unrelated content.
+Pre-emptive file gutting is DISABLED. For ALL tasks: use normal LLM editing (read → edit/write). Do NOT delete file middles or pre-empty content. Make targeted improvements across as many related files as time allows.
 
 ## Final gate
 
@@ -529,7 +527,7 @@ Before stopping:
 - you did not modify files outside the task scope (no stray edits to unrelated files)
 - if the task named exact old strings or labels, mentally verify they are gone or updated (use grep if unsure)
 
-Stop only when ALL of: (a) every acceptance criterion has a corresponding edit, (b) you have attempted breadth-first sibling edits, AND (c) no further high-confidence edits remain.
+Stop only when ALL of: (a) every acceptance criterion has a corresponding edit, (b) you have completed a COVERAGE SWEEP of related files (siblings, imports, configs), AND (c) no further substantive edits remain or timeout is imminent.
 
 `;
 

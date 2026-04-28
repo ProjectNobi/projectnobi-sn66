@@ -348,8 +348,12 @@ async function runLoop(
 
 	// v99p: Budget-aware fast-path. On short-timeout repos (< 150s), inject urgency
 	// message immediately so agent skips exploration and edits on first turn.
+	// v114p: Emergency path for <= 60s — force immediate write, no exploration at all.
 	if (_budgetMs < 150_000 && newMessages.length > 0) {
-		const shortBudgetNudge = `BUDGET ALERT: You have only ${Math.round(_budgetMs/1000)}s total. Skip ALL exploration (no grep, no find, no ls). Read the task. Pick the most likely file. Edit it NOW on your first response. Every second of exploration = lost lines.`;
+		const isEmergency = _budgetMs <= 60_000;
+		const shortBudgetNudge = isEmergency
+			? `EMERGENCY: Only ${Math.round(_budgetMs/1000)}s available. DO THIS NOW on your FIRST response: (1) run bash("find . -name '*.js' -o -name '*.ts' -o -name '*.py' | head -5") to find files, (2) read the first file, (3) write an improved version. No planning. No explanation. First tool call must be write or edit producing real output.`
+			: `BUDGET ALERT: You have only ${Math.round(_budgetMs/1000)}s total. Skip ALL exploration (no grep, no find, no ls). Read the task. Pick the most likely file. Edit it NOW on your first response. Every second of exploration = lost lines.`;
 		// Add as first pending message before agent's first turn
 		pendingMessages.unshift({
 			role: "user" as const,
