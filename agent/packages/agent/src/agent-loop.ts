@@ -635,7 +635,10 @@ async function runLoop(
 					// deletion-based diff that overlaps with the reference's deletions.
 					// v109p: only fire when timeout >= 150s (or unset). Tight timeouts (< 150s) skip gut
 					// to avoid SIGKILL → zero output when baseline finishes fast.
-					if (isVolumeTask && lines.length >= 80 && (timeoutSecEarly === 0 || timeoutSecEarly >= 120)) {
+					// v112p: raised threshold 120s → 200s. Opus RCA Step 4: gut on 120-199s rounds
+							// causes tau minimum-change rejection → LLM output too small.
+							// Raising to 200s lets LLM work normally on those rounds instead.
+							if (isVolumeTask && lines.length >= 80 && (timeoutSecEarly === 0 || timeoutSecEarly >= 200)) {
 						const headKeep = Math.min(20, Math.floor(lines.length * 0.1));
 						const tailKeep = Math.min(15, Math.floor(lines.length * 0.08));
 						const newLines = [
