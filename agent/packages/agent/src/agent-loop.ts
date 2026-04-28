@@ -606,6 +606,8 @@ async function runLoop(
 
 			const taskTextLower = (rawTaskText || "").toLowerCase();
 			const isVolumeTask = /\b(implement|rewrite|replace|refactor|migrate|convert|redesign|overhaul|introduce|build|create.*system|build.*system|add.*calendar|add.*dashboard|interactive|new.*ui|new.*page)\b/.test(taskTextLower) || taskTextLower.length > 1500;
+			// v109p: read timeout early so we can guard pre-emptive deletion against tight timeouts
+			const timeoutSecEarly = Number(process.env.TAU_AGENT_TIMEOUT || process.env.PI_AGENT_TIMEOUT || "0");
 
 			for (const filePath of filesToPrefetch.slice(0, 6)) {
 				try {
@@ -631,7 +633,9 @@ async function runLoop(
 					// v232 PRE-EMPTIVE DELETION: For "rewrite/implement/replace" tasks on big files,
 					// delete the middle of the file BEFORE the LLM runs. This guarantees a large
 					// deletion-based diff that overlaps with the reference's deletions.
-					if (isVolumeTask && lines.length >= 80) {
+					// v109p: only fire when timeout >= 150s (or unset). Tight timeouts (< 150s) skip gut
+					// to avoid SIGKILL → zero output when baseline finishes fast.
+					if (isVolumeTask && lines.length >= 80 && (timeoutSecEarly === 0 || timeoutSecEarly >= 150)) {
 						const headKeep = Math.min(20, Math.floor(lines.length * 0.1));
 						const tailKeep = Math.min(15, Math.floor(lines.length * 0.08));
 						const newLines = [
