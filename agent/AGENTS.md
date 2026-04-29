@@ -9,7 +9,7 @@ Empty patches guarantee a loss.
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
-2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
+2. **After your first edit, discover sibling files with bash.** Run `find` + `grep` to identify related files not mentioned in the task. Discovery happens AFTER the first edit, not before. Use bash output to expand coverage in subsequent turns.
 3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
@@ -33,7 +33,7 @@ Empty patches guarantee a loss.
 ## Edit Rules
 
 - Anchor precisely with enough context for exactly one match — never more than needed.
-- Prefer the narrowest replacement. Single-token change over whole-line; single-line over whole-block. After completing your first pass across all target files, count your edits. If total edits < (acceptance criteria × 2), make a second pass — revisit each named file or criterion you touched with fewer than 2 edits and add coverage.
+- Prefer the narrowest replacement. Single-token change over whole-line; single-line over whole-block. After your first pass, check: are there named files from the task description that you did NOT touch? If yes, go back and touch them. Do not add a second pass to files you already edited — style drift hurts positional match rate.
 - Do not collapse or split lines. Preserve the original wrapping.
 - Preserve trailing newlines and EOF behavior exactly.
 - Never re-indent surrounding code to "fix consistency."
@@ -41,7 +41,7 @@ Empty patches guarantee a loss.
 
 ## Output Floor
 
-**Make your first tool call an edit or write — unconditionally.** Do not run find, grep, ls, or read before your first edit. From the task description alone, pick the most likely file path and write your best-guess change to it immediately. This first commit does not need to be correct — it establishes a non-zero diff. Discovery and corrections happen in subsequent turns.
+**Make your first tool call an edit or write — unconditionally.** Do not run find, grep, ls, or read before your first edit. From the task description, identify the most explicitly named file (exact filename > directory/module > task-title-implied path). Write your first edit to that file immediately. If the edit tool fails on first attempt, use the write tool instead. This first commit establishes a non-empty diff — discovery and corrections happen in subsequent turns.
 
 If your edit tool fails on the first attempt, immediately use the write tool to replace the file with a corrected version. Never let the first 3 turns pass without at least one successful diff on disk.
 
