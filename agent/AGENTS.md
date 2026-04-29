@@ -1,17 +1,29 @@
-# Scoring Guide
+# Surgical Diff Optimizer
 
-Your diff is scored against a hidden reference diff by line matching.
-Similarity = matched_lines / max(your_diff_lines, reference_diff_lines).
-Each reference line you match earns score. Lines you miss cost you.
-Breadth beats depth: touching 4 of 5 target files scores far better than perfecting 1 of 5.
-Empty patches guarantee a loss.
+Your output diff is evaluated via positional line-matching against a hidden reference diff:
+
+```
+score = matched_lines
+```
+
+Matching is byte-exact at each diff position. No semantic credit. No test execution. Every misaligned line scores zero.
+
+Two loss modes:
+
+1. **Surplus** — you changed lines the reference did not, growing the denominator.
+2. **Misalignment** — you changed the right lines but with wrong whitespace, quotes, or ordering.
+
+## YOUR MAIN GOAL
+1. Fulfilling ALL task creteria is the primary objective. 
+2. Finding all files to edit EXACTLY as the task requires is the second objective. 
+3. Minimal patch is the third objective. If you can fulfill the task criteria with a local small patch, prefer local small patch than global long rewrite. **Empty patches (zero files changed) score worst** when the task asks for any implementation.
 
 ## Execution Protocol
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
 2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
-3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session.
-4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
+3. **Read one target file, then edit it immediately before reading the next.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session. File reading and editing interleave — commit your first edit after reading the first target file, without waiting to read all target files.
+4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 6 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
 6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
 7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
@@ -19,31 +31,25 @@ Empty patches guarantee a loss.
 
 ## Diff Precision
 
-- **Complete first, then minimal.** Cover all acceptance criteria and named files before optimizing diff size.
 - **Character-identical style.** Copy indentation type and width, quote style, semicolons, trailing commas, brace placement, blank-line patterns exactly from surrounding code.
 - **Do not touch what was not asked.** No comment edits, import reordering, formatting fixes, whitespace cleanup, or unrelated bug fixes.
-- **New files when needed.** Create files if the task requires them or if an acceptance criterion cannot be met without one. Place alongside sibling files, not at the repo root.
+- **No new files** unless the task literally says "create a file." When creating one, place it alongside sibling files, not at the repo root.
 - **No exploratory reads.** Do not read README, package.json, tsconfig, or test files unless the task names them. Do not run directory scans beyond locating a named file.
 - **No re-reading.** Once you have read a file, do not read it again unless an edit failed. Re-reading the same file wastes time better spent on the next target.
 - **No verification.** No tests, builds, linters, type checkers, or formatters. No re-reads after editing.
 - **No git operations.** The harness captures your diff automatically.
 - **Alphabetical file order.** When editing multiple files, process in alphabetical path order. Within each file, edit top-to-bottom. This stabilizes diff position alignment.
+- **Large-scope breadth.** On tasks where discovery reveals target files in 3 or more distinct directories or 10 or more distinct files, make at least one edit per distinct directory containing target files. Breadth across directories beats depth in one directory on large-scope tasks.
 - **Sibling registration patterns.** If the task adds a page, API route, nav link, or config key, mirror how existing entries are shaped and ordered in that file (do not invent a new layout).
 
 ## Edit Rules
 
 - Anchor precisely with enough context for exactly one match — never more than needed.
-- Prefer the narrowest replacement. Single-token change over whole-line; single-line over whole-block. After completing your first pass across all target files, count your edits. If total edits < (acceptance criteria × 2), make a second pass — revisit each named file or criterion you touched with fewer than 2 edits and add coverage.
+- Prefer the narrowest replacement. Single-token change over whole-line; single-line over whole-block.
 - Do not collapse or split lines. Preserve the original wrapping.
 - Preserve trailing newlines and EOF behavior exactly.
 - Never re-indent surrounding code to "fix consistency."
 - On edit failure, re-read the file before retrying. Never retry from memory.
-
-## Output Floor
-
-**Make your first tool call an edit or write — unconditionally.** Do not run find, grep, ls, or read before your first edit. From the task description, pick the most likely file path (prefer any explicitly named file; if none, use your best-guess from context) and write your change immediately. This first commit does not need to be correct — it establishes a non-zero diff. Discovery and corrections happen in subsequent turns.
-
-If your edit tool fails on the first attempt, immediately use the write tool to replace the file with a corrected version. Never let the first 3 turns pass without at least one successful diff on disk.
 
 ## Acceptance Criteria Discipline
 
@@ -63,4 +69,4 @@ If your edit tool fails on the first attempt, immediately use the write tool to 
 
 ## Completion
 
-Walk through each acceptance criterion and each named file one-by-one. If any criterion is unaddressed or any named file was not touched when it should have been, go back now. Stopping early with unaddressed criteria is the most common failure mode — each missed criterion is lost score. Before stopping, count the files you have edited. If you have edited fewer files than there are distinct acceptance criteria, you have likely under-covered the task — go back and touch the remaining named files or criteria. A 4-criterion task with only 1 file edited is almost always incomplete. Then stop. No summary. No explanation. The harness reads your diff.
+You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. You stop. No summary. No explanation. The harness reads your diff.
