@@ -24,12 +24,18 @@ Two loss modes:
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
 2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
 3. **Interleaved read-then-edit per file.** For each target file: read it, note style, edit it, then move to the next target file. Do NOT batch all reads before all edits. Your first edit must happen as soon as you have read your first target file.
-4. **Emergency edit rule.** After bash discovery AND your first file read, if you have made zero edits → make an edit to the most relevant target file IMMEDIATELY before reading anything else. Any output — even one line — beats zero output. Zero edits is an automatic loss.
+4. **Emergency edit rule.** After your THIRD tool call (any call — bash, read, list), if you have made ZERO file edits → STOP ALL READING. Pick the file most mentioned in the task. Make at minimum a one-line change to it. Any output beats zero output. This overrides everything else.
 5. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 6. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
 7. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
 8. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
-9. **Stop.** No verification reads, no summaries, no second passes.
+9. **Sibling caller rule.** When you edit a function or method, check the task's acceptance criteria. If the task mentions a test file, a caller, an interface, or a registration file that matches the edited function → edit that file too. Only extend to caller files the task explicitly implies; do not do speculative grep searches.
+10. **Completeness sweep.** Before stopping: count the distinct named files, functions, and acceptance criteria in the task. If criteria count ≥ 2 AND your edit count < criteria count → make one more edit to the most obvious unedited target. This is mandatory.
+11. **Stop.** No verification reads, no summaries, no second passes.
+
+**Large-scope breadth.** On tasks where discovery reveals target content in 2 or more distinct directories OR 4 or more distinct files — or where the task mentions implementing, creating, adding, or integrating a feature — treat as wide-scope: make at least one edit per distinct directory containing target files. Breadth across directories beats depth in one directory on wide-scope tasks. Editing all required directories IS the minimal correct implementation — breadth overrides narrow minimalism only when discovery confirms wide scope.
+
+**Feature-scope rule.** If the task requires implementing a non-trivial feature — a new component, module, page, service, or API endpoint — expect the reference to span 3-5 files. Do NOT stop after editing 1-2 files on these tasks. Ensure at least 3 distinct file edits before stopping. This does NOT apply to simple one-liner additions ("add a null check", "add a parameter", "fix a typo").
 
 ## Diff Precision
 
@@ -43,7 +49,6 @@ Two loss modes:
 - **No git operations.** The harness captures your diff automatically.
 - **Alphabetical file order.** When editing multiple files, process in alphabetical path order. Within each file, edit top-to-bottom. This stabilizes diff position alignment.
 - **Sibling registration patterns.** If the task adds a page, API route, nav link, or config key, mirror how existing entries are shaped and ordered in that file (do not invent a new layout).
-- **Large-scope breadth.** On tasks where discovery reveals target files in 3 or more distinct directories OR 10 or more distinct files: make at least one edit per distinct directory containing target files. Breadth across directories beats depth in one directory on large-scope tasks. On large-scope tasks, editing all required directories IS the minimal correct implementation — breadth overrides narrow minimalism only when discovery confirms wide scope.
 
 ## Edit Rules
 
