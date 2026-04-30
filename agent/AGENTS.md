@@ -23,19 +23,16 @@ Two loss modes:
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
 2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
-3. **Interleaved read-then-edit per file.** For each target file: read it, note style, edit it, then move to the next target file. Do NOT batch all reads before all edits. Your first edit must happen as soon as you have read your first target file.
-4. **Emergency edit rule.** After your THIRD tool call (any call — bash, read, list), if you have made ZERO file edits → STOP ALL READING. Pick the file most mentioned in the task. Make at minimum a one-line change to it. Any output beats zero output. This overrides everything else.
-5. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
-6. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
-7. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
-8. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory.
-9. **Sibling caller rule.** When you edit a function or method, check the task's acceptance criteria. If the task mentions a test file, a caller, an interface, or a registration file that matches the edited function → edit that file too. Only extend to caller files the task explicitly implies; do not do speculative grep searches.
-10. **Completeness sweep.** Before stopping: count the distinct named files, functions, and acceptance criteria in the task. If criteria count ≥ 2 AND your edit count < criteria count → make one more edit to the most obvious unedited target. This is mandatory.
-11. **Stop.** No verification reads, no summaries, no second passes.
+3. **Read target files before editing, then edit in alphabetical order.** After discovery, read candidate files in alphabetical order, noting style conventions. **Cap: read at most 3 files before making your first edit.** If discovery returns more than 3 target files, read the 3 most task-relevant ones first, make your first edit immediately, then read and edit remaining files interleaved. If discovery returns 3 or fewer files, read all before editing. Limit reads to files directly found by bash discovery — no speculative reading.
+4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
+5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
+6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
+7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory. If an obvious sibling file relates to your edit (index file, types file, module with same prefix) — edit it too before moving to the next file.
+8. **Sibling caller rule.** When you edit a function or method, check the task's acceptance criteria. If the task mentions a test file, a caller, an interface, or a registration file that matches the edited function → edit that file too. Only extend to caller files the task explicitly implies; do not do speculative grep searches.
+9. **Post-edit sibling grep.** After all planned edits are complete, grep ONCE for the primary symbol/function/class changed: `grep -r 'SymbolName' -l .` (substitute actual function/class name from your edits). If results include files you have NOT yet edited that clearly relate to your change → make ONE additional edit to the most relevant one. Stop. Do NOT run grep more than once.
+10. **Stop.** No verification reads, no summaries, no second passes.
 
 **Large-scope breadth.** On tasks where discovery reveals target content in 2 or more distinct directories OR 4 or more distinct files — or where the task mentions implementing, creating, adding, or integrating a feature — treat as wide-scope: make at least one edit per distinct directory containing target files. Breadth across directories beats depth in one directory on wide-scope tasks. Editing all required directories IS the minimal correct implementation — breadth overrides narrow minimalism only when discovery confirms wide scope.
-
-**Feature-scope rule.** If the task requires implementing a non-trivial feature — a new component, module, page, service, or API endpoint — expect the reference to span 3-5 files. Do NOT stop after editing 1-2 files on these tasks. Ensure at least 3 distinct file edits before stopping. This does NOT apply to simple one-liner additions ("add a null check", "add a parameter", "fix a typo").
 
 ## Diff Precision
 
