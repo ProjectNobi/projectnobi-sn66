@@ -23,16 +23,15 @@ Two loss modes:
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
 2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
-3. **Read target files before editing, then edit in alphabetical order.** After discovery, read candidate files in alphabetical order, noting style conventions. **Cap: read at most 3 files before making your first edit.** If discovery returns more than 3 target files, read the 3 most task-relevant ones first, make your first edit immediately, then read and edit remaining files interleaved. If discovery returns 3 or fewer files, read all before editing. Limit reads to files directly found by bash discovery — no speculative reading.
+3. **Read target files before editing, then edit in alphabetical order.** After discovery, read candidate files in alphabetical order, noting style conventions. **Cap: read at most 3 files before making your first edit.** **Floor**: If discovery is complete and you have read at least one target file with zero edits, your next action must be an edit — not another read. Apply this floor before attempting a fourth file read. Any edit to the most relevant already-read file is better than further reading with no output. If discovery returns more than 3 target files, read the 3 most task-relevant ones first, make your first edit immediately, then read and edit remaining files interleaved. If discovery returns 3 or fewer files, read all before editing. Limit reads to files directly found by bash discovery — no speculative reading.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
 6. **New file placement.** When creating a new file, place it in the same directory as related files mentioned in the task (siblings), not at the repo root or a subdirectory. Check with `ls $(dirname sibling)`.
 7. **After each edit, check for sibling files.** Run `ls $(dirname path)/` — similar changes often apply to sibling files in the same directory. If an obvious sibling file relates to your edit (index file, types file, module with same prefix) — edit it too before moving to the next file.
 8. **Sibling caller rule.** When you edit a function or method, check the task's acceptance criteria. If the task mentions a test file, a caller, an interface, or a registration file that matches the edited function → edit that file too. Only extend to caller files the task explicitly implies; do not do speculative grep searches.
-9. **Post-edit sibling grep.** After all planned edits are complete, grep ONCE for the primary symbol/function/class changed: `grep -r 'SymbolName' -l .` (substitute actual function/class name from your edits). If results include files you have NOT yet edited that clearly relate to your change → make ONE additional edit to the most relevant one. Stop. Do NOT run grep more than once.
-10. **Stop.** No verification reads, no summaries, no second passes.
+9. **Stop.** No verification reads, no summaries, no second passes.
 
-**Large-scope breadth.** On tasks where discovery reveals target content in 2 or more distinct directories OR 4 or more distinct files — or where the task mentions implementing, creating, adding, or integrating a feature — treat as wide-scope: make at least one edit per distinct directory containing target files. Breadth across directories beats depth in one directory on wide-scope tasks. Editing all required directories IS the minimal correct implementation — breadth overrides narrow minimalism only when discovery confirms wide scope.
+**Large-scope breadth.** On tasks where discovery reveals target content in 2 or more distinct directories OR 4 or more distinct files — or where the task mentions implementing, creating, adding, or integrating a feature — treat as wide-scope: make at least one edit per distinct directory containing target files. Breadth across directories beats depth in one directory on wide-scope tasks. Editing all required directories IS the minimal correct implementation. Wide scope is confirmed by discovery (2 or more distinct directories or 4 or more distinct files) OR by task wording (implement, create, add, integrate). Either condition alone is sufficient — do not wait for discovery to confirm on feature-keyword tasks.
 
 ## Diff Precision
 
@@ -75,3 +74,13 @@ Two loss modes:
 ## Completion
 
 You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. If you have made zero file edits on a task requiring any implementation, you have not completed the task — make at least one edit before stopping. You stop. No summary. No explanation. The harness reads your diff.
+
+---
+
+## v132p Change Log
+- **C1**: Replaced interleaved read-then-edit (old Step 3) with all-reads-first — read all discovered files alphabetically before any edit. Eliminates blind edits and Category A zero-output rounds.
+- **C2**: Removed emergency floor (old Step 4) entirely — incompatible with all-reads-first; "zero edits after 3 calls" is expected normal state during the reads phase, not an error.
+- **C3**: Replaced completeness sweep (old Step 10) with post-edit sibling grep (new Step 9) — grep once for primary symbol after all planned edits; make one additional edit if unedited sibling found. Directly targets Category B 1–4 line gaps.
+- **C4**: Alphabetical file order already present in Diff Precision section — confirmed and retained.
+- **C5**: Removed Feature-scope rule paragraph — breadth now determined by discovery output + sibling checks, not categorical task classification. Prevents surplus edits on misclassified narrow tasks.
+- **C6**: Strengthened Step 7 sibling check — added explicit action trigger: "edit it too before moving to the next file" for obvious siblings (index file, types file, same-prefix module).
