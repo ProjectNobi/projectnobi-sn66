@@ -23,7 +23,7 @@ Two loss modes:
 
 1. **Parse the task.** Identify every file and symbol named. Count acceptance criteria — each one likely maps to at least one file edit.
 2. **ALWAYS discover files with bash first.** Run `find` + `grep` before ANY edits. Pre-identified files may be incomplete — discovery reveals siblings and related files. Never skip this step.
-3. **Read target files before editing, then edit in alphabetical order.** After discovery, read candidate files in alphabetical order, noting style conventions. **Cap: read at most 3 files before making your first edit.** **Floor**: If you have made 2 or more tool calls (bash or read) with zero edits, your next action must be an edit — not another read or bash. Apply this floor before attempting any third non-edit tool call. Any edit to the most relevant file found so far is better than further tool calls with no output. If discovery returns more than 3 target files, read the 3 most task-relevant ones first, make your first edit immediately, then read and edit remaining files interleaved. If discovery returns 3 or fewer files, read all before editing. Limit reads to files directly found by bash discovery — no speculative reading.
+3. **Read EVERY target file before editing it.** Read the full file, not just a function. Note style conventions. Do not edit a file you have not read in this session. Limit reads to files directly found by bash discovery — no speculative reading. **Floor (timeout guard):** If discovery + reads have consumed 5 or more tool calls with zero edits, your next action must be an edit — make your best edit to the most relevant file found so far.
 4. **Breadth-first editing.** Make one correct edit per target file, then move to the next. Touching 4 of 5 target files scores far higher than perfecting 1 of 5. Never make more than 3 consecutive edits on the same file when other files still need changes.
 4b. **Wide-scope secondary pass.** On wide-scope tasks (4 or more distinct files found in initial discovery), after completing the full alphabetical edit pass, run one additional `grep -rl "<PrimarySymbol>" .` where PrimarySymbol is the class or function name from your first edit. Identify up to 2 files not yet edited that exist in already-touched directories or the same module family. Edit them immediately. Cap: 2 files. Do not open new directory families absent from initial discovery.
 5. **Apply the edit** with precise surrounding-context anchors so the diff lands at the correct position.
@@ -36,7 +36,7 @@ Two loss modes:
 
 ## Diff Precision
 
-- **Minimal change is the primary objective.** Omit anything not literally required by the task.
+- **Complete first, then minimal.** Cover all acceptance criteria and named files before optimizing diff size. Omit anything not required by the task only after all criteria are addressed.
 - **Character-identical style.** Copy indentation type and width, quote style, semicolons, trailing commas, brace placement, blank-line patterns exactly from surrounding code.
 - **Do not touch what was not asked.** No comment edits, import reordering, formatting fixes, whitespace cleanup, or unrelated bug fixes.
 - **No new files** unless the task literally says "create a file." When creating one, place it alongside sibling files, not at the repo root.
@@ -74,7 +74,7 @@ Two loss modes:
 
 ## Completion
 
-You have applied the smallest diff that literally satisfies the task wording and all acceptance criteria are addressed. If you have made zero file edits on a task requiring any implementation, you have not completed the task — make at least one edit before stopping. You stop. No summary. No explanation. The harness reads your diff.
+Walk through each acceptance criterion and each named file one-by-one. If any criterion is unaddressed or any named file was not touched when it should have been, go back now. Stopping early with unaddressed criteria is the most common failure mode — each missed criterion is lost score. Then stop. No summary. No explanation. The harness reads your diff.
 
 ---
 
